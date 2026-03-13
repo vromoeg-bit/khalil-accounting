@@ -102,7 +102,7 @@ const NAV = [
 
 // ══ PASSWORDS ══
 const KITCHEN_PASSWORD  = '1234'
-const TRACKING_PASSWORD = '5678'
+const TRACKING_PASSWORD = '6666'
 
 const can  = (user, p) => { if (!user) return false; const ps = PERMS[user.role] || []; return ps.includes('all') || ps.includes(p) }
 const fmt  = n => parseFloat(n || 0).toLocaleString('ar-EG')
@@ -846,7 +846,348 @@ function InvoiceModal({ order, onClose }) {
     </Modal>
   )
 }
+// ══════════════════════════════════════════════════════
+//  DELIVERY VIEW — بوابة المندوب
+// ══════════════════════════════════════════════════════
+function DeliveryView({ data, refetch }) {
+  const [authed, setAuthed]             = useState(false)
+  const [selectedDriver, setSelectedDriver] = useState(null)
+  const [gpsActive, setGpsActive]       = useState(false)
+  const [gpsWatchId, setGpsWatchId]     = useState(null)
+  const [failModal, setFailModal]       = useState(null)
+  const [failReason, setFailReason]     = useState('')
+  const [processing, setProcessing]     = useState([])
+  const [myOrders, setMyOrders]         = useState([])
 
+  // ── fetch orders for this driver ──
+  const fetchMyOrders = useCallback(async () => {
+    if (!selectedDriver) return
+    const { data: d } = await supabase
+      .from('delivery_orders')
+      .select('*')
+      .eq('driver_id', selectedDriver.id)
+      .in('status', ['تم تعيين المندوب', 'جاهز للشحن', 'في الطريق'])
+      .order('created_at', { ascending: false })
+    setMyOrders(d || [])
+  }, [selectedDriver])
+
+  useEffect(() => {
+    if (!selectedDriver) return
+    fetchMyOrders()
+    const ch = supabase
+      .channel('delivery-drv-' + selectedDriver.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'delivery_orders' }, fetchMyOrders)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [selectedDriver, fetchMyOrders])
+
+  // cleanup GPS on unmount / driver-change
+  useEffect(() => {
+    return () => { if (gpsWatchId !== null) navigator.geolocation?.clearWatch(gpsWatchId) }
+  }, [gpsWatchId])
+
+  // ── GPS ──
+  const startGPS = () => {
+    if (!navigator.geolocation) { toast.error('GPS غير مدعوم في هذا الجهاز'); return }
+    const id = navigator.geolocation.watchPosition(
+      async pos => {
+        await supabase.from('delivery_drivers').update({
+          current_lat: pos.coords.latitude,
+          current_lng: pos.coords.longitude,
+          location_updated_at: new Date().toISOString()
+        }).eq('id', selectedDriver.id)
+      },
+      err => { toast.error('تعذّر تفعيل GPS'); setGpsActive(false); setGpsWatchId(null) },
+      { enableHighAccuracy:true, maximumAge:10000, timeout:12000 }
+    )
+    setGpsWatchId(id); setGpsActive(true)
+    toast.success('📡 GPS شغّال — موقعك بيوصل للمسؤول!')
+  }
+
+  const stopGPS = async () => {
+    if (gpsWatchId !== null) navigator.geolocation?.clearWatch(gpsWatchId)
+    setGpsWatchId(null); setGpsActive(false)
+    await supabase.from('delivery_drivers')
+      .update({ current_lat:null, current_lng:null, location_updated_at:null })
+      .eq('id', selectedDriver.id)
+    toast.warn('📡 GPS متوقف')
+  }
+
+  // ── order actions ──
+  const confirmReceived = async id => {
+    setProcessing(p => [...p, id])
+    await supabase.from('delivery_orders').update({ status:'في الطريق' }).eq('id', id)
+    await fetchMyOrders()
+    setProcessing(p => p.filter(x => x !== id))
+    toast.success('📦 تم تأكيد استلام الأوردر!')
+  }
+
+  const confirmDelivered = async id => {
+    setProcessing(p => [...p, id])
+    await supabase.from('delivery_orders').update({
+      status:'تم التسليم',
+      delivered_at: new Date().toISOString()
+    }).eq('id', id)
+    await fetchMyOrders(); refetch()
+    setProcessing(p => p.filter(x => x !== id))
+    toast.success('🎉 تم التسليم والتحصيل بنجاح!')
+  }
+
+  const confirmFailed = async () => {
+    if (!failModal || !failReason.trim()) return
+    setProcessing(p => [...p, failModal.id])
+    await supabase.from('delivery_orders').update({
+      status:'فشل التسليم',
+      fail_reason: failReason,
+      notes: failReason
+    }).eq('id', failModal.id)
+    await fetchMyOrders(); refetch()
+    setProcessing(p => p.filter(x => x !== failModal.id))
+    setFailModal(null); setFailReason('')
+    toast.warn('❌ تم تسجيل فشل التسليم')
+  }
+
+  // ── screens ──
+  if (!authed)
+    return <PasswordScreen icon="🛵" title="بوابة المندوب"
+             subtitle="هذه الصفحة للمندوبين فقط" password={DELIVERY_PASSWORD}
+             onLogin={() => setAuthed(true)} color="#f97316"/>
+
+  if (!selectedDriver) return (
+    <div className="page-enter" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:400 }}>
+      <Card style={{ width:340, padding:28, textAlign:'center' }}>
+        <div style={{ fontSize:48, marginBottom:10 }}>🏍</div>
+        <div style={{ fontSize:17, fontWeight:900, color:'white', marginBottom:4 }}>اختر اسمك</div>
+        <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginBottom:20 }}>اختار من القائمة دي عشان تشوف أوردراتك</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+          {data.drivers.map(d => (
+            <button key={d.id} onClick={() => setSelectedDriver(d)}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(249,115,22,.22)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(249,115,22,.1)'}
+              style={{ padding:'12px 16px', background:'rgba(249,115,22,.1)', border:'1px solid rgba(249,115,22,.3)', borderRadius:12, color:'white', cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', gap:10, transition:'background .15s' }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#f97316aa)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900 }}>{d.name?.charAt(0)}</div>
+              <div style={{ flex:1, textAlign:'right' }}>
+                <div>{d.name}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginTop:1 }}>{d.zone} • {d.phone||'—'}</div>
+              </div>
+              <span style={{ color:'#f97316', fontSize:18 }}>←</span>
+            </button>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+
+  const pendingOrders = myOrders.filter(o => ['تم تعيين المندوب','جاهز للشحن'].includes(o.status))
+  const onWayOrders   = myOrders.filter(o => o.status === 'في الطريق')
+
+  return (
+    <div className="page-enter">
+
+      {/* ── Fail Reason Modal ── */}
+      {failModal && (
+        <Modal title="❌ سبب عدم التسليم" onClose={() => { setFailModal(null); setFailReason('') }}>
+          <div style={{ textAlign:'center', marginBottom:16 }}>
+            <div style={{ fontSize:44, marginBottom:8 }}>❓</div>
+            <div style={{ fontSize:14, fontWeight:700, color:'white' }}>ليه ما اتسلمش الأوردر؟</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:4 }}>اختر سبب أو اكتبه</div>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:12 }}>
+            {['العميل مش موجود','رقم خاطئ','العنوان غلط','العميل رفض الاستلام','الأوردر تالف أو ناقص','لا يوجد فكة'].map(r => (
+              <div key={r} onClick={() => setFailReason(r)}
+                style={{ padding:'10px 14px', borderRadius:9, border:`1px solid ${failReason===r?'rgba(239,68,68,.6)':'rgba(255,255,255,.1)'}`, background:failReason===r?'rgba(239,68,68,.15)':'rgba(255,255,255,.03)', cursor:'pointer', color:failReason===r?'#fca5a5':'rgba(255,255,255,.55)', fontWeight:failReason===r?700:400, fontSize:13, transition:'all .15s', display:'flex', alignItems:'center', gap:8 }}>
+                {failReason===r && <span>✔</span>} {r}
+              </div>
+            ))}
+          </div>
+          <Fld label="أو اكتب سبب آخر">
+            <Inp value={failReason} onChange={setFailReason} placeholder="اكتب هنا..."/>
+          </Fld>
+          <div style={{ display:'flex', gap:10, marginTop:12 }}>
+            <Btn onClick={confirmFailed} color="#ef4444" disabled={!failReason.trim()} loading={processing.includes(failModal?.id)}>❌ تأكيد عدم التسليم</Btn>
+            <Btn onClick={() => { setFailModal(null); setFailReason('') }} color="rgba(255,255,255,.1)">إلغاء</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Driver Header + GPS ── */}
+      <div style={{ background:'linear-gradient(135deg,rgba(249,115,22,.12),rgba(249,115,22,.04))', border:'1px solid rgba(249,115,22,.3)', borderRadius:16, padding:'16px 20px', marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:50, height:50, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#f97316aa)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:900, color:'white', boxShadow:'0 0 14px #f9731644' }}>{selectedDriver.name?.charAt(0)}</div>
+          <div>
+            <div style={{ fontSize:18, fontWeight:900, color:'white' }}>{selectedDriver.name}</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📍 {selectedDriver.zone} • 📱 {selectedDriver.phone||'—'}</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {/* GPS Button */}
+          <button onClick={gpsActive ? stopGPS : startGPS}
+            className="btn-ripple"
+            style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 20px', borderRadius:12, border:`2px solid ${gpsActive?'rgba(16,185,129,.6)':'rgba(255,255,255,.2)'}`, background:gpsActive?'rgba(16,185,129,.18)':'rgba(255,255,255,.06)', color:gpsActive?'#6ee7b7':'rgba(255,255,255,.65)', cursor:'pointer', fontSize:13, fontWeight:800, fontFamily:'inherit', transition:'all .25s', boxShadow:gpsActive?'0 0 16px rgba(16,185,129,.3)':'none' }}>
+            <span style={{ fontSize:17, display:'inline-block', animation:gpsActive?'pulse 1.5s infinite':undefined }}>📡</span>
+            {gpsActive ? 'GPS شغّال' : 'تفعيل GPS'}
+            {gpsActive && <span style={{ width:9, height:9, borderRadius:'50%', background:'#10b981', display:'inline-block', animation:'ping 1.2s infinite' }}/>}
+          </button>
+          <button onClick={() => { setSelectedDriver(null); stopGPS() }}
+            style={{ padding:'9px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,.1)', background:'rgba(255,255,255,.04)', color:'rgba(255,255,255,.4)', cursor:'pointer', fontSize:12, fontFamily:'inherit', transition:'background .15s' }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.08)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.04)'}>
+            🔄 تغيير المندوب
+          </button>
+        </div>
+      </div>
+
+      {/* ── Stats ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:18 }}>
+        <Kpi label="⏳ ينتظر الاستلام" value={pendingOrders.length} color="#f97316"/>
+        <Kpi label="🚀 في الطريق" value={onWayOrders.length} color="#3b5bfe"/>
+        <Kpi label="📡 GPS" value={gpsActive?'شغّال ✅':'متوقف'} color={gpsActive?'#10b981':'#6b7280'}/>
+      </div>
+
+      {/* ── No orders ── */}
+      {myOrders.length === 0 && (
+        <Card><div style={{ textAlign:'center', padding:60 }}>
+          <div style={{ fontSize:56, marginBottom:12 }}>📭</div>
+          <div style={{ fontSize:18, fontWeight:800, color:'white' }}>مفيش أوردرات دلوقتي</div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>الصفحة بتتحدث تلقائياً لما يجي أوردر جديد</div>
+        </div></Card>
+      )}
+
+      {/* ── SECTION 1: Pending — needs to confirm receipt ── */}
+      {pendingOrders.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:'#f97316', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ position:'relative', width:10, height:10 }}>
+              <div style={{ position:'absolute', inset:0, borderRadius:'50%', background:'#f97316', animation:'ping 1.4s infinite' }}/>
+              <div style={{ position:'absolute', inset:0, borderRadius:'50%', background:'#f97316' }}/>
+            </div>
+            أوردرات تنتظر استلامك ({pendingOrders.length})
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
+            {pendingOrders.map(o => {
+              const prods = parseProducts(o.products)
+              return (
+                <div key={o.id} style={{ background:'rgba(249,115,22,.07)', border:'1px solid rgba(249,115,22,.4)', borderRadius:16, padding:18, animation:'fadeUp .3s ease' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:17, fontWeight:900, color:'white' }}>{o.customer}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3 }}>
+                        📍 {o.address || o.zone}
+                      </div>
+                      {o.phone && <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📱 {o.phone}</div>}
+                    </div>
+                    <div style={{ textAlign:'left' }}>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#fcd34d' }}>{fmt(o.value)} ج</div>
+                      <div style={{ fontSize:11, color:PAY_C[o.payment_method]||'white', fontWeight:700, marginTop:2 }}>
+                        {PAY_ICONS[o.payment_method]} {o.payment_method}
+                      </div>
+                    </div>
+                  </div>
+                  {prods.length > 0 && (
+                    <div style={{ background:'rgba(255,255,255,.05)', borderRadius:9, padding:'8px 10px', marginBottom:10 }}>
+                      {prods.map((p,i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'4px 0', borderBottom:i<prods.length-1?'1px solid rgba(255,255,255,.05)':'none' }}>
+                          <span style={{ color:'white' }}>{p.name}</span>
+                          <span style={{ color:'#86efac', fontWeight:700 }}>× {p.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.notes && (
+                    <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:8, padding:'7px 11px', marginBottom:10, fontSize:12, color:'#fcd34d' }}>
+                      📝 {o.notes}
+                    </div>
+                  )}
+                  <Btn onClick={() => confirmReceived(o.id)} loading={processing.includes(o.id)}
+                    color="#f97316" style={{ width:'100%', justifyContent:'center', fontSize:15, padding:'12px' }}>
+                    📦 استلمت الأوردر
+                  </Btn>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SECTION 2: On-way — deliver or fail ── */}
+      {onWayOrders.length > 0 && (
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:'#86efac', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ animation:'float 2.5s ease infinite', display:'inline-block' }}>🚀</span>
+            أوردرات في الطريق ({onWayOrders.length})
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
+            {onWayOrders.map(o => {
+              const prods = parseProducts(o.products)
+              return (
+                <div key={o.id} style={{ background:'rgba(16,185,129,.06)', border:'1px solid rgba(16,185,129,.35)', borderRadius:16, padding:18, animation:'fadeUp .3s ease' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:17, fontWeight:900, color:'white' }}>{o.customer}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3 }}>
+                        📍 {o.address || o.zone}
+                      </div>
+                      {o.phone && <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📱 {o.phone}</div>}
+                    </div>
+                    <div style={{ textAlign:'left' }}>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#fcd34d' }}>{fmt(o.value)} ج</div>
+                      <div style={{ fontSize:11, color:PAY_C[o.payment_method]||'white', fontWeight:700, marginTop:2 }}>
+                        {PAY_ICONS[o.payment_method]} {o.payment_method}
+                      </div>
+                    </div>
+                  </div>
+                  {prods.length > 0 && (
+                    <div style={{ background:'rgba(255,255,255,.05)', borderRadius:9, padding:'8px 10px', marginBottom:10 }}>
+                      {prods.map((p,i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'4px 0', borderBottom:i<prods.length-1?'1px solid rgba(255,255,255,.05)':'none' }}>
+                          <span style={{ color:'white' }}>{p.name}</span>
+                          <span style={{ color:'#86efac', fontWeight:700 }}>× {p.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.notes && (
+                    <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:8, padding:'7px 11px', marginBottom:10, fontSize:12, color:'#fcd34d' }}>
+                      📝 {o.notes}
+                    </div>
+                  )}
+                  {/* Open in Google Maps */}
+                  {(o.address || o.zone) && (
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(o.address || o.zone)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.25)', borderRadius:9, marginBottom:12, color:'#93c5fd', fontSize:12, fontWeight:700, textDecoration:'none' }}>
+                      🗺 افتح الموقع على الخريطة
+                    </a>
+                  )}
+                  {/* Action buttons */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
+                    <Btn onClick={() => confirmDelivered(o.id)} loading={processing.includes(o.id)}
+                      color="#10b981" style={{ justifyContent:'center', fontSize:13, padding:'11px' }}>
+                      ✅ تم التسليم والتحصيل
+                    </Btn>
+                    <Btn onClick={() => { setFailModal(o); setFailReason('') }}
+                      color="#ef4444" style={{ justifyContent:'center', fontSize:13, padding:'11px' }}>
+                      ❌ لم يتم التسليم
+                    </Btn>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop:24, textAlign:'center' }}>
+        <button onClick={fetchMyOrders}
+          style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.1)', borderRadius:10, padding:'10px 24px', color:'rgba(255,255,255,.45)', cursor:'pointer', fontSize:13, fontFamily:'inherit', transition:'all .15s' }}
+          onMouseEnter={e => { e.currentTarget.style.color='white'; e.currentTarget.style.background='rgba(255,255,255,.09)' }}
+          onMouseLeave={e => { e.currentTarget.style.color='rgba(255,255,255,.45)'; e.currentTarget.style.background='rgba(255,255,255,.05)' }}>
+          ↻ تحديث الأوردرات
+        </button>
+      </div>
+    </div>
+  )
+}
 function Home({ data, setPage }) {
   const { orders, drivers, settings } = data
   const delivered  = orders.filter(o => o.status === 'تم التسليم')
@@ -1808,6 +2149,7 @@ export default function DeliverySystem() {
     switch (page) {
       case 'home':      return <Home     {...props} setPage={setPage}/>
       case 'orders':    return <Orders   {...props}/>
+     case 'delivery': return <DeliveryView data={data} refetch={refetch}/>
       case 'analytics': return <Analytics data={data}/>
       case 'drivers':   return <Drivers  {...props}/>
       case 'zones':     return <Zones    {...props}/>
