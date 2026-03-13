@@ -103,6 +103,7 @@ const NAV = [
 // ══ PASSWORDS ══
 const KITCHEN_PASSWORD  = '1234'
 const TRACKING_PASSWORD = '6666'
+const DELIVERY_PASSWORD = '0000'
 
 const can  = (user, p) => { if (!user) return false; const ps = PERMS[user.role] || []; return ps.includes('all') || ps.includes(p) }
 const fmt  = n => parseFloat(n || 0).toLocaleString('ar-EG')
@@ -2112,7 +2113,6 @@ function notifCount(data) {
   })
   return c
 }
-
 export default function DeliverySystem() {
   const { data, loading, refetch, lastUpdate } = useData()
   const [page, setPage]   = useState('home')
@@ -2121,7 +2121,10 @@ export default function DeliverySystem() {
   const [shortcuts, setShortcuts] = useState(false)
 
   useEffect(() => { injectStyles() }, [])
-  useEffect(() => { const t = setInterval(() => setTime(new Date()), 15000); return () => clearInterval(t) }, [])
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 15000)
+    return () => clearInterval(t)
+  }, [])
 
   useEffect(() => {
     const handler = (e) => {
@@ -2147,22 +2150,53 @@ export default function DeliverySystem() {
 
   const renderPage = () => {
     switch (page) {
-      case 'home':      return <Home     {...props} setPage={setPage}/>
-      case 'orders':    return <Orders   {...props}/>
-     case 'delivery': return <DeliveryView data={data} refetch={refetch}/>
-      case 'analytics': return <Analytics data={data}/>
-      case 'drivers':   return <Drivers  {...props}/>
-      case 'zones':     return <Zones    {...props}/>
-      case 'vehicles':  return <Vehicles {...props}/>
-      case 'trips':     return <Trips    {...props}/>
-      case 'kitchen':   return <KitchenView  data={data} refetch={refetch}/>
-      case 'tracking':  return <TrackingView data={data} refetch={refetch}/>
-      case 'pricing':   return <Pricing  {...props}/>
-      case 'report':    return <Report   data={data}/>
-      case 'notifs':    return <Notifs   data={data}/>
-      case 'settings':  return <Settings data={data} refetch={refetch}/>
-      case 'users':     return <Users    data={data} refetch={refetch} currentUser={DEFAULT_USER}/>
-      default: return null
+      case 'home':
+        return <Home {...props} setPage={setPage}/>
+
+      case 'orders':
+        return <Orders {...props}/>
+
+      case 'delivery':
+        return <DeliveryView data={data} refetch={refetch}/>  // ✅ تمت الإضافة بشكل صحيح
+
+      case 'analytics':
+        return <Analytics data={data}/>
+
+      case 'drivers':
+        return <Drivers {...props}/>
+
+      case 'zones':
+        return <Zones {...props}/>
+
+      case 'vehicles':
+        return <Vehicles {...props}/>
+
+      case 'trips':
+        return <Trips {...props}/>
+
+      case 'kitchen':
+        return <KitchenView data={data} refetch={refetch}/>
+
+      case 'tracking':
+        return <TrackingView data={data} refetch={refetch}/>
+
+      case 'pricing':
+        return <Pricing {...props}/>
+
+      case 'report':
+        return <Report data={data}/>
+
+      case 'notifs':
+        return <Notifs data={data}/>
+
+      case 'settings':
+        return <Settings data={data} refetch={refetch}/>
+
+      case 'users':
+        return <Users data={data} refetch={refetch} currentUser={DEFAULT_USER}/>
+
+      default:
+        return null
     }
   }
 
@@ -2175,39 +2209,100 @@ export default function DeliverySystem() {
   return (
     <ToastProvider>
       {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)}/>}
+
       <div style={{ display:'flex', height:'100vh', overflow:'hidden', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif", background:'#0a0a0f' }}>
 
+        {/* ── SIDEBAR ── */}
         <div style={{ width:sidebarCollapsed?64:220, background:pc, display:'flex', flexDirection:'column', flexShrink:0, overflow:'hidden', transition:'width .3s cubic-bezier(.22,1,.36,1)', borderLeft:'1px solid rgba(255,255,255,.06)' }}>
           <div style={{ background:'rgba(0,0,0,.35)', padding:`14px ${sidebarCollapsed?12:14}px`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
             <div className="float-anim" style={{ fontSize:28, flexShrink:0 }}>🚚</div>
-            {!sidebarCollapsed && (<div style={{ overflow:'hidden' }}><div style={{ fontSize:12, fontWeight:800, color:'white', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{data.settings?.companyName||'دليفري'}</div><div style={{ fontSize:9, color:'#c9a227', marginTop:1 }}>مركز العمليات</div></div>)}
+            {!sidebarCollapsed && (
+              <div style={{ overflow:'hidden' }}>
+                <div style={{ fontSize:12, fontWeight:800, color:'white', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  {data.settings?.companyName||'دليفري'}
+                </div>
+                <div style={{ fontSize:9, color:'#c9a227', marginTop:1 }}>مركز العمليات</div>
+              </div>
+            )}
           </div>
 
           {!sidebarCollapsed && (
             <div style={{ padding:'8px 12px', background:'rgba(0,0,0,.2)', flexShrink:0 }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:ua.length>0?5:0 }}>
-                {[[data.drivers.filter(d=>d.status==='شغال').length,'شغّالين','#10b981'],[newOrd,'جديد','#f97316']].map(([v,l,c])=>(
-                  <div key={l} style={{ background:'rgba(255,255,255,.07)', borderRadius:8, padding:'5px 8px', textAlign:'center' }}><div style={{ fontSize:16, fontWeight:900, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div><div style={{ fontSize:9, color:'rgba(255,255,255,.4)' }}>{l}</div></div>
+                {[
+                  [data.drivers.filter(d=>d.status==='شغال').length,'شغّالين','#10b981'],
+                  [newOrd,'جديد','#f97316']
+                ].map(([v,l,c])=>(
+                  <div key={l} style={{ background:'rgba(255,255,255,.07)', borderRadius:8, padding:'5px 8px', textAlign:'center' }}>
+                    <div style={{ fontSize:16, fontWeight:900, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+                    <div style={{ fontSize:9, color:'rgba(255,255,255,.4)' }}>{l}</div>
+                  </div>
                 ))}
               </div>
-              {ua.length > 0 && <div className="urgent-pulse" style={{ background:'rgba(249,115,22,.15)', borderRadius:7, padding:'3px 9px', fontSize:10, color:'#f97316', fontWeight:700, cursor:'pointer' }} onClick={() => setPage('orders')}>⚠ {ua.length} بدون مندوب</div>}
+
+              {ua.length > 0 && (
+                <div
+                  className="urgent-pulse"
+                  style={{ background:'rgba(249,115,22,.15)', borderRadius:7, padding:'3px 9px', fontSize:10, color:'#f97316', fontWeight:700, cursor:'pointer' }}
+                  onClick={() => setPage('orders')}
+                >
+                  ⚠ {ua.length} بدون مندوب
+                </div>
+              )}
             </div>
           )}
 
           <nav style={{ flex:1, overflowY:'auto', padding:sidebarCollapsed?'4px':'6px' }}>
             {GROUPS.map(g => (
               <div key={g.id} style={{ marginBottom:sidebarCollapsed?0:8 }}>
-                {!sidebarCollapsed && <div style={{ fontSize:9, fontWeight:800, color:'rgba(255,255,255,.2)', padding:'6px 10px 3px', letterSpacing:1.5, textTransform:'uppercase' }}>{g.label}</div>}
+                {!sidebarCollapsed && (
+                  <div style={{ fontSize:9, fontWeight:800, color:'rgba(255,255,255,.2)', padding:'6px 10px 3px', letterSpacing:1.5, textTransform:'uppercase' }}>
+                    {g.label}
+                  </div>
+                )}
+
                 {g.items.map(it => {
                   const active = page === it.id
-                  const badge  = it.id==='notifs'?nc:it.id==='orders'?newOrd:0
+                  const badge  = it.id==='notifs' ? nc : it.id==='orders' ? newOrd : 0
+
                   return (
-                    <button key={it.id} onClick={() => setPage(it.id)} title={it.label} className="sidebar-item"
-                      style={{ display:'flex', alignItems:'center', gap:sidebarCollapsed?0:9, width:'100%', padding:sidebarCollapsed?'10px 0':'8px 10px', justifyContent:sidebarCollapsed?'center':'flex-start', background:active?'rgba(59,91,254,.3)':'transparent', border:'none', cursor:'pointer', fontSize:12, fontFamily:'inherit', color:active?'white':'rgba(255,255,255,.45)', textAlign:'right', borderRadius:9, borderRight:`3px solid ${active?'#3b5bfe':'transparent'}`, marginBottom:2, transition:'all .15s', position:'relative' }}>
+                    <button
+                      key={it.id}
+                      onClick={() => setPage(it.id)}
+                      title={it.label}
+                      className="sidebar-item"
+                      style={{
+                        display:'flex', alignItems:'center', gap:sidebarCollapsed?0:9, width:'100%',
+                        padding:sidebarCollapsed?'10px 0':'8px 10px',
+                        justifyContent:sidebarCollapsed?'center':'flex-start',
+                        background:active?'rgba(59,91,254,.3)':'transparent',
+                        border:'none',
+                        cursor:'pointer',
+                        fontSize:12,
+                        fontFamily:'inherit',
+                        color:active?'white':'rgba(255,255,255,.45)',
+                        textAlign:'right',
+                        borderRadius:9,
+                        borderRight:`3px solid ${active?'#3b5bfe':'transparent'}`,
+                        marginBottom:2,
+                        transition:'all .15s',
+                        position:'relative'
+                      }}
+                    >
                       <span style={{ fontSize:16, flexShrink:0 }}>{it.icon}</span>
                       {!sidebarCollapsed && <span style={{ flex:1 }}>{it.label}</span>}
-                      {badge > 0 && !sidebarCollapsed && <span style={{ fontSize:10, fontWeight:800, padding:'1px 6px', borderRadius:8, background:'#ef4444', color:'white', animation:badge>0?'pulse 1.5s infinite':'none' }}>{badge}</span>}
-                      {badge > 0 && sidebarCollapsed && <span style={{ position:'absolute', top:4, left:4, width:16, height:16, borderRadius:'50%', background:'#ef4444', color:'white', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>{badge}</span>}
+
+                      {badge > 0 && !sidebarCollapsed && (
+                        <span style={{ fontSize:10, fontWeight:800, padding:'1px 6px', borderRadius:8, background:'#ef4444', color:'white', animation:'pulse 1.5s infinite' }}>
+                          {badge}
+                        </span>
+                      )}
+
+                      {badge > 0 && sidebarCollapsed && (
+                        <span style={{ position:'absolute', top:4, left:4, width:16, height:16, borderRadius:'50%', background:'#ef4444', color:'white', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          {badge}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -2217,31 +2312,72 @@ export default function DeliverySystem() {
 
           <div style={{ padding:`10px ${sidebarCollapsed?8:14}px`, background:'rgba(0,0,0,.3)', borderTop:'1px solid rgba(255,255,255,.06)', flexShrink:0 }}>
             {sidebarCollapsed ? (
-              <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#3b5bfe)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, margin:'0 auto' }}>م</div>
+              <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#3b5bfe)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, margin:'0 auto' }}>
+                م
+              </div>
             ) : (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ width:30, height:30, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#3b5bfe)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, flexShrink:0 }}>م</div>
-                <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:11, fontWeight:800, color:'white' }}>مدير النظام</div><div style={{ fontSize:9, color:'#a855f7', marginTop:1 }}>● مدير</div></div>
-                <button onClick={() => setShortcuts(true)} title="اختصارات لوحة المفاتيح" style={{ background:'none', border:'none', color:'rgba(255,255,255,.3)', cursor:'pointer', fontSize:13, transition:'color .15s' }} onMouseEnter={e=>e.target.style.color='white'} onMouseLeave={e=>e.target.style.color='rgba(255,255,255,.3)'}>⌨</button>
+                <div style={{ width:30, height:30, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#3b5bfe)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, flexShrink:0 }}>
+                  م
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:'white' }}>مدير النظام</div>
+                  <div style={{ fontSize:9, color:'#a855f7', marginTop:1 }}>● مدير</div>
+                </div>
+                <button
+                  onClick={() => setShortcuts(true)}
+                  title="اختصارات لوحة المفاتيح"
+                  style={{ background:'none', border:'none', color:'rgba(255,255,255,.3)', cursor:'pointer', fontSize:13, transition:'color .15s' }}
+                  onMouseEnter={e=>e.target.style.color='white'}
+                  onMouseLeave={e=>e.target.style.color='rgba(255,255,255,.3)'}
+                >
+                  ⌨
+                </button>
               </div>
             )}
           </div>
         </div>
 
+        {/* ── CONTENT ── */}
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
           <div style={{ background:'rgba(255,255,255,.025)', height:52, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,.06)', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <button onClick={() => setSidebarCollapsed(s=>!s)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.4)', cursor:'pointer', fontSize:18, transition:'color .15s, transform .3s', transform:sidebarCollapsed?'scaleX(-1)':'scaleX(1)', display:'flex', alignItems:'center' }} onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.4)'}>☰</button>
-              <div style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', animation:'pulse 2s infinite' }}/>
-              <span style={{ fontSize:12, color:'rgba(255,255,255,.4)', fontFamily:"'JetBrains Mono',monospace" }}>{time.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</span>
-              {nc > 0 && <span onClick={() => setPage('notifs')} className="urgent-pulse" style={{ background:'rgba(239,68,68,.12)', color:'#fca5a5', fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:8, cursor:'pointer', border:'1px solid rgba(239,68,68,.25)' }}>🔔 {nc} تنبيه</span>}
+              <button
+                onClick={() => setSidebarCollapsed(s=>!s)}
+                style={{ background:'none', border:'none', color:'rgba(255,255,255,.4)', cursor:'pointer', fontSize:18, transition:'color .15s, transform .3s', transform:sidebarCollapsed?'scaleX(-1)':'scaleX(1)', display:'flex', alignItems:'center' }}
+                onMouseEnter={e=>e.currentTarget.style.color='white'}
+                onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.4)'}
+              >
+                ☰
+              </button>
+
+              <div style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', animation:'pulse 2s infinite' }} />
+              <span style={{ fontSize:12, color:'rgba(255,255,255,.4)', fontFamily:"'JetBrains Mono',monospace" }}>
+                {time.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}
+              </span>
+
+              {nc > 0 && (
+                <span
+                  onClick={() => setPage('notifs')}
+                  className="urgent-pulse"
+                  style={{ background:'rgba(239,68,68,.12)', color:'#fca5a5', fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:8, cursor:'pointer', border:'1px solid rgba(239,68,68,.25)' }}
+                >
+                  🔔 {nc} تنبيه
+                </span>
+              )}
             </div>
+
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ fontSize:15, fontWeight:800, color:'white' }}>{allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}</span>
+              <span style={{ fontSize:15, fontWeight:800, color:'white' }}>
+                {allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}
+              </span>
               <RefreshBar lastUpdate={lastUpdate} onRefresh={refetch}/>
             </div>
           </div>
-          <div key={page} style={{ flex:1, overflowY:'auto', padding:20 }}>{renderPage()}</div>
+
+          <div key={page} style={{ flex:1, overflowY:'auto', padding:20 }}>
+            {renderPage()}
+          </div>
         </div>
       </div>
     </ToastProvider>
