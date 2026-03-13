@@ -1421,10 +1421,6 @@ function Vehicles({ data, refetch }) {
               </div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
-              <div style={{ background:'rgba(59,91,254,.1)', borderRadius:9, padding:'9px 12px' }}>
-                <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>تكلفة/كم</div>
-                <div style={{ fontSize:18, fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>{v.cost_per_km} ج</div>
-              </div>
               <div style={{ background:'rgba(255,255,255,.04)', borderRadius:9, padding:'9px 12px' }}>
                 <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>أقصى طلبات</div>
                 <div style={{ fontSize:18, fontWeight:800, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{v.max_orders}</div>
