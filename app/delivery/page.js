@@ -100,7 +100,6 @@ const NAV = [
   { id:'settings',  label:'الإعدادات',   icon:'⚙', group:'config' },
 ]
 
-// ══ PASSWORDS ══
 const KITCHEN_PASSWORD  = '1234'
 const TRACKING_PASSWORD = '6666'
 const DELIVERY_PASSWORD = '0000'
@@ -174,6 +173,9 @@ function ToastProvider({ children }) {
   )
 }
 const toast = { success:(m,d) => ToastContext._add?.(m,'success',d), error:(m,d) => ToastContext._add?.(m,'error',d), warn:(m,d) => ToastContext._add?.(m,'warn',d), info:(m,d) => ToastContext._add?.(m,'info',d) }
+
+// ══ [كل مكونات AnimCounter, Sparkline, MiniBarChart, DonutChart, Badge, Btn, Kpi, Card, Modal, Confirm, Inp, Sel, Fld, Err, Tbl, Tr, Td, BarMini, SectionTitle, Checkbox] ══
+// [محتفظ بها كما هي بالظبط من كودك الأصلي]
 
 function AnimCounter({ value, suffix = '', color }) {
   const [display, setDisplay] = useState(0)
@@ -605,7 +607,6 @@ function TrackingView({ data, refetch }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-        {/* Driver List */}
         <div>
           <div style={{ fontSize:13, fontWeight:800, color:'white', marginBottom:10 }}>👥 حالة المندوبين</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -650,7 +651,6 @@ function TrackingView({ data, refetch }) {
           </div>
         </div>
 
-        {/* Map + Orders */}
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.08)', borderRadius:14, overflow:'hidden', height:280, position:'relative' }}>
             {liveDrivers.length > 0 ? (
@@ -702,6 +702,574 @@ function TrackingView({ data, refetch }) {
     </div>
   )
 }
+
+// ══════════════════════════════════════════════════════
+//  DATA HOOK
+// ══════════════════════════════════════════════════════
+function useData() {
+  const [data, setData] = useState({ orders:[], drivers:[], zones:[], vehicles:[], trips:[], users:[], settings:{} })
+  const [loading, setLoading] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    const [ord, drv, zon, veh, trp, usr, set] = await Promise.all([
+      supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
+      supabase.from('delivery_drivers').select('*'),
+      supabase.from('delivery_zones').select('*'),
+      supabase.from('delivery_vehicles').select('*'),
+      supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
+      supabase.from('delivery_users').select('*'),
+      supabase.from('delivery_settings').select('*').single(),
+    ])
+    setData({ orders:ord.data||[], drivers:drv.data||[], zones:zon.data||[], vehicles:veh.data||[], trips:trp.data||[], users:usr.data||[], settings:set.data||{ companyName:'دليفري خليل الحلواني', unassignedAlert:15, defaultSLA:40 } })
+    setLastUpdate(new Date()); setLoading(false)
+  }, [])
+  useEffect(() => { fetchAll() }, [fetchAll])
+  return { data, loading, refetch: fetchAll, lastUpdate }
+}
+
+// ══════════════════════════════════════════════════════
+//  PRODUCTS TABLE
+// ══════════════════════════════════════════════════════
+function ProductsTable({ products, onChange }) {
+  const add    = () => onChange([...products, { name:'', qty:1, price:0 }])
+  const remove = (i) => onChange(products.filter((_, idx) => idx !== i))
+  const update = (i, k, v) => onChange(products.map((p, idx) => idx === i ? { ...p, [k]:v } : p))
+  const total  = products.reduce((s, p) => s + (parseFloat(p.qty)||0) * (parseFloat(p.price)||0), 0)
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)' }}>الأصناف {products.length > 0 && <span style={{ color:'#7b9fff' }}>({products.length})</span>}</span>
+        <Btn onClick={add} small color="#3b5bfe">➕ إضافة صنف</Btn>
+      </div>
+      {products.length === 0 ? (
+        <div onClick={add} style={{ border:'2px dashed rgba(255,255,255,.1)', borderRadius:9, padding:18, textAlign:'center', cursor:'pointer', color:'rgba(255,255,255,.2)', fontSize:12, transition:'all .2s' }} onMouseEnter={e => e.currentTarget.style.borderColor='rgba(59,91,254,.4)'} onMouseLeave={e => e.currentTarget.style.borderColor='rgba(255,255,255,.1)'}>
+          📦 اضغط لإضافة صنف
+        </div>
+      ) : (
+        <div style={{ background:'rgba(255,255,255,.03)', borderRadius:10, overflow:'hidden', border:'1px solid rgba(255,255,255,.08)' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 70px 80px 36px', background:'rgba(255,255,255,.05)', padding:'7px 10px', gap:6 }}>
+            {['اسم الصنف','الكمية','السعر (ج)',''].map((l, j) => <div key={j} style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.4)', textAlign:j===0?'right':'center' }}>{l}</div>)}
+          </div>
+          {products.map((p, i) => (
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 70px 80px 36px', padding:'6px 10px', gap:6, borderTop:'1px solid rgba(255,255,255,.05)', alignItems:'center', animation:'fadeUp .2s ease' }}>
+              <input value={p.name} onChange={e => update(i,'name',e.target.value)} placeholder="اسم الصنف..." style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:6, padding:'5px 8px', color:'white', fontSize:12, fontFamily:'inherit', outline:'none', direction:'rtl', width:'100%' }}/>
+              <input type="number" value={p.qty} onChange={e => update(i,'qty',e.target.value)} min={1} style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:6, padding:'5px', color:'#86efac', fontSize:12, fontFamily:'inherit', outline:'none', textAlign:'center', width:'100%' }}/>
+              <input type="number" value={p.price} onChange={e => update(i,'price',e.target.value)} min={0} style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:6, padding:'5px', color:'#fcd34d', fontSize:12, fontFamily:'inherit', outline:'none', textAlign:'center', width:'100%' }}/>
+              <button onClick={() => remove(i)} style={{ background:'rgba(239,68,68,.2)', border:'1px solid rgba(239,68,68,.3)', borderRadius:6, color:'#fca5a5', cursor:'pointer', fontSize:13, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit', transition:'all .15s' }}>✕</button>
+            </div>
+          ))}
+          <div style={{ borderTop:'1px solid rgba(255,255,255,.1)', padding:'8px 12px', display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,.03)' }}>
+            <span style={{ fontSize:12, color:'rgba(255,255,255,.5)', fontWeight:700 }}>الإجمالي ({products.length} صنف)</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(total)} ج</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OrderTimeline({ order }) {
+  const done   = STATUS_FLOW[order.status] ?? 0
+  const failed = ['فشل التسليم','مرتجع','ملغي'].includes(order.status)
+  const steps  = [{ label:'استُلم', icon:'📨', s:'استُلم الطلب' },{ label:'تحضير', icon:'⚙️', s:'قيد التحضير' },{ label:'شحن', icon:'📫', s:'جاهز للشحن' },{ label:'تعيين', icon:'🏍', s:'تم تعيين المندوب' },{ label:'الطريق', icon:'🚀', s:'في الطريق' },{ label:'تسليم', icon:'✅', s:'تم التسليم' }]
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:0, overflowX:'auto', padding:'4px 0' }}>
+      {steps.map((st, i) => {
+        const idx = STATUS_FLOW[st.s]; const active = done >= idx && !failed; const curr = order.status === st.s
+        return (
+          <div key={i} style={{ display:'flex', alignItems:'center', flex:1, minWidth:0 }}>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flex:'0 0 auto' }}>
+              <div style={{ width:28, height:28, borderRadius:'50%', background:active?SC[st.s]?.bg||'rgba(59,91,254,.15)':'rgba(255,255,255,.05)', border:`2px solid ${active?SC[st.s]?.d||'#3b5bfe':'rgba(255,255,255,.15)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, transition:'all .3s', boxShadow:curr?`0 0 10px ${SC[st.s]?.d||'#3b5bfe'}66`:'none', animation:curr?'glow 2s infinite':'none' }}>
+                {active ? st.icon : <span style={{ fontSize:7, color:'rgba(255,255,255,.3)', fontWeight:700 }}>{i+1}</span>}
+              </div>
+              <span style={{ fontSize:8, color:active?'rgba(255,255,255,.6)':'rgba(255,255,255,.2)', whiteSpace:'nowrap', fontWeight:700 }}>{st.label}</span>
+            </div>
+            {i < steps.length - 1 && <div style={{ flex:1, height:2, background:active&&done>idx?'rgba(59,91,254,.5)':'rgba(255,255,255,.08)', margin:'0 2px', marginBottom:14, transition:'background .3s', borderRadius:1 }}/>}
+          </div>
+        )
+      })}
+      {failed && (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, marginRight:4 }}>
+          <div style={{ width:28, height:28, borderRadius:'50%', background:SC[order.status]?.bg, border:`2px solid ${SC[order.status]?.d}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12 }}>{SC[order.status]?.icon}</div>
+          <span style={{ fontSize:8, color:SC[order.status]?.c, whiteSpace:'nowrap', fontWeight:700 }}>{order.status}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InvoiceModal({ order, onClose }) {
+  const prods = parseProducts(order.products)
+  const total = prods.reduce((s,p) => s + (parseFloat(p.qty)||0)*(parseFloat(p.price)||0), 0)
+  return (
+    <Modal title="🧾 فاتورة الطلب" onClose={onClose} extra={<Btn onClick={() => window.print()} small color="#10b981">🖨 طباعة</Btn>}>
+      <div className="print-area" style={{ direction:'rtl' }}>
+        <div style={{ textAlign:'center', marginBottom:20, borderBottom:'2px dashed rgba(255,255,255,.1)', paddingBottom:16 }}>
+          <div style={{ fontSize:32, marginBottom:4 }}>🚚</div>
+          <div style={{ fontSize:18, fontWeight:900, color:'white' }}>فاتورة توصيل</div>
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3, fontFamily:"'JetBrains Mono',monospace" }}>#{String(order.id).padStart(6,'0')}</div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+          {[['العميل',order.customer,'white'],['التليفون',order.phone||'—','rgba(255,255,255,.6)'],['العنوان',order.address||'—','rgba(255,255,255,.6)'],['المنطقة',order.zone,'#7b9fff'],['التاريخ',fmtDate(order.created_at),'rgba(255,255,255,.6)'],['الوقت',fmtTime(order.created_at),'rgba(255,255,255,.6)']].map(([l,v,c]) => (
+            <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:9, padding:'10px 13px' }}>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginBottom:3 }}>{l}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:c }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        {prods.length > 0 && (
+          <div style={{ background:'rgba(255,255,255,.03)', borderRadius:10, overflow:'hidden', border:'1px solid rgba(255,255,255,.08)', marginBottom:14 }}>
+            <div style={{ padding:'8px 14px', background:'rgba(255,255,255,.05)', fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)' }}>الأصناف</div>
+            {prods.map((p, i) => (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'8px 14px', borderTop:'1px solid rgba(255,255,255,.05)', fontSize:13 }}>
+                <span style={{ color:'white' }}>{p.name}</span>
+                <div style={{ display:'flex', gap:16 }}><span style={{ color:'#86efac' }}>× {p.qty}</span><span style={{ color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(parseFloat(p.qty)*parseFloat(p.price))} ج</span></div>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', borderTop:'1px solid rgba(255,255,255,.1)', background:'rgba(255,255,255,.04)' }}>
+              <span style={{ fontWeight:800, color:'white' }}>إجمالي الأصناف</span>
+              <span style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(total)} ج</span>
+            </div>
+          </div>
+        )}
+        <div style={{ background:'rgba(59,91,254,.08)', borderRadius:12, padding:14, border:'1px solid rgba(59,91,254,.2)' }}>
+          {[['قيمة الطلب', fmt(order.value)+' ج', '#fcd34d'], ['رسوم التوصيل', (order.delivery_fee||0) === 0 ? 'مجاني 🎉' : fmt(order.delivery_fee)+' ج', '#7b9fff'], ['طريقة الدفع', `${PAY_ICONS[order.payment_method]||''} ${order.payment_method}`, PAY_C[order.payment_method]||'white']].map(([l,v,c]) => (
+            <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, fontSize:13 }}>
+              <span style={{ color:'rgba(255,255,255,.5)', fontWeight:700 }}>{l}</span>
+              <span style={{ color:c, fontWeight:800 }}>{v}</span>
+            </div>
+          ))}
+          <div style={{ borderTop:'1px solid rgba(255,255,255,.1)', paddingTop:10, marginTop:4 }}><div style={{ display:'flex', justifyContent:'center', marginTop:6 }}><Badge s={order.status}/></div></div>
+        </div>
+        {order.notes && <div style={{ marginTop:12, fontSize:12, color:'rgba(255,255,255,.4)', fontStyle:'italic', textAlign:'center' }}>ملاحظات: {order.notes}</div>}
+      </div>
+    </Modal>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  DELIVERY VIEW — بوابة المندوب
+// ══════════════════════════════════════════════════════
+function DeliveryView({ data, refetch }) {
+  const [authed, setAuthed]             = useState(false)
+  const [selectedDriver, setSelectedDriver] = useState(null)
+  const [gpsActive, setGpsActive]       = useState(false)
+  const [gpsWatchId, setGpsWatchId]     = useState(null)
+  const [failModal, setFailModal]       = useState(null)
+  const [failReason, setFailReason]     = useState('')
+  const [processing, setProcessing]     = useState([])
+  const [myOrders, setMyOrders]         = useState([])
+
+  const fetchMyOrders = useCallback(async () => {
+    if (!selectedDriver) return
+    const { data: d } = await supabase
+      .from('delivery_orders')
+      .select('*')
+      .eq('driver_id', selectedDriver.id)
+      .in('status', ['تم تعيين المندوب', 'جاهز للشحن', 'في الطريق'])
+      .order('created_at', { ascending: false })
+    setMyOrders(d || [])
+  }, [selectedDriver])
+
+  useEffect(() => {
+    if (!selectedDriver) return
+    fetchMyOrders()
+    const ch = supabase
+      .channel('delivery-drv-' + selectedDriver.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'delivery_orders' }, fetchMyOrders)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [selectedDriver, fetchMyOrders])
+
+  useEffect(() => {
+    return () => { if (gpsWatchId !== null) navigator.geolocation?.clearWatch(gpsWatchId) }
+  }, [gpsWatchId])
+
+  const startGPS = () => {
+    if (!navigator.geolocation) { toast.error('GPS غير مدعوم في هذا الجهاز'); return }
+    const id = navigator.geolocation.watchPosition(
+      async pos => {
+        await supabase.from('delivery_drivers').update({
+          current_lat: pos.coords.latitude,
+          current_lng: pos.coords.longitude,
+          location_updated_at: new Date().toISOString()
+        }).eq('id', selectedDriver.id)
+      },
+      err => { toast.error('تعذّر تفعيل GPS'); setGpsActive(false); setGpsWatchId(null) },
+      { enableHighAccuracy:true, maximumAge:10000, timeout:12000 }
+    )
+    setGpsWatchId(id); setGpsActive(true)
+    toast.success('📡 GPS شغّال — موقعك بيوصل للمسؤول!')
+  }
+
+  const stopGPS = async () => {
+    if (gpsWatchId !== null) navigator.geolocation?.clearWatch(gpsWatchId)
+    setGpsWatchId(null); setGpsActive(false)
+    await supabase.from('delivery_drivers')
+      .update({ current_lat:null, current_lng:null, location_updated_at:null })
+      .eq('id', selectedDriver?.id)
+    toast.warn('📡 GPS متوقف')
+  }
+
+  const confirmReceived = async id => {
+    setProcessing(p => [...p, id])
+    await supabase.from('delivery_orders').update({ status:'في الطريق' }).eq('id', id)
+    await fetchMyOrders()
+    setProcessing(p => p.filter(x => x !== id))
+    toast.success('📦 تم تأكيد استلام الأوردر!')
+  }
+
+  const confirmDelivered = async id => {
+    setProcessing(p => [...p, id])
+    await supabase.from('delivery_orders').update({
+      status:'تم التسليم',
+      delivered_at: new Date().toISOString()
+    }).eq('id', id)
+    await fetchMyOrders(); refetch()
+    setProcessing(p => p.filter(x => x !== id))
+    toast.success('🎉 تم التسليم والتحصيل بنجاح!')
+  }
+
+  const confirmFailed = async () => {
+    if (!failModal || !failReason.trim()) return
+    setProcessing(p => [...p, failModal.id])
+    await supabase.from('delivery_orders').update({
+      status:'فشل التسليم',
+      fail_reason: failReason,
+      notes: failReason
+    }).eq('id', failModal.id)
+    await fetchMyOrders(); refetch()
+    setProcessing(p => p.filter(x => x !== failModal.id))
+    setFailModal(null); setFailReason('')
+    toast.warn('❌ تم تسجيل فشل التسليم')
+  }
+
+  if (!authed)
+    return <PasswordScreen icon="🛵" title="بوابة المندوب"
+             subtitle="هذه الصفحة للمندوبين فقط" password={DELIVERY_PASSWORD}
+             onLogin={() => setAuthed(true)} color="#f97316"/>
+
+  if (!selectedDriver) return (
+    <div className="page-enter" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:400 }}>
+      <Card style={{ width:340, padding:28, textAlign:'center' }}>
+        <div style={{ fontSize:48, marginBottom:10 }}>🏍</div>
+        <div style={{ fontSize:17, fontWeight:900, color:'white', marginBottom:4 }}>اختر اسمك</div>
+        <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginBottom:20 }}>اختار من القائمة دي عشان تشوف أوردراتك</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+          {data.drivers.map(d => (
+            <button key={d.id} onClick={() => setSelectedDriver(d)}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(249,115,22,.22)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(249,115,22,.1)'}
+              style={{ padding:'12px 16px', background:'rgba(249,115,22,.1)', border:'1px solid rgba(249,115,22,.3)', borderRadius:12, color:'white', cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', gap:10, transition:'background .15s' }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#f97316aa)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900 }}>{d.name?.charAt(0)}</div>
+              <div style={{ flex:1, textAlign:'right' }}>
+                <div>{d.name}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginTop:1 }}>{d.zone} • {d.phone||'—'}</div>
+              </div>
+              <span style={{ color:'#f97316', fontSize:18 }}>←</span>
+            </button>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+
+  const pendingOrders = myOrders.filter(o => ['تم تعيين المندوب','جاهز للشحن'].includes(o.status))
+  const onWayOrders   = myOrders.filter(o => o.status === 'في الطريق')
+
+  return (
+    <div className="page-enter">
+      {failModal && (
+        <Modal title="❌ سبب عدم التسليم" onClose={() => { setFailModal(null); setFailReason('') }}>
+          <div style={{ textAlign:'center', marginBottom:16 }}>
+            <div style={{ fontSize:44, marginBottom:8 }}>❓</div>
+            <div style={{ fontSize:14, fontWeight:700, color:'white' }}>ليه ما اتسلمش الأوردر؟</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:4 }}>اختر سبب أو اكتبه</div>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:12 }}>
+            {['العميل مش موجود','رقم خاطئ','العنوان غلط','العميل رفض الاستلام','الأوردر تالف أو ناقص','لا يوجد فكة'].map(r => (
+              <div key={r} onClick={() => setFailReason(r)}
+                style={{ padding:'10px 14px', borderRadius:9, border:`1px solid ${failReason===r?'rgba(239,68,68,.6)':'rgba(255,255,255,.1)'}`, background:failReason===r?'rgba(239,68,68,.15)':'rgba(255,255,255,.03)', cursor:'pointer', color:failReason===r?'#fca5a5':'rgba(255,255,255,.55)', fontWeight:failReason===r?700:400, fontSize:13, transition:'all .15s', display:'flex', alignItems:'center', gap:8 }}>
+                {failReason===r && <span>✔</span>} {r}
+              </div>
+            ))}
+          </div>
+          <Fld label="أو اكتب سبب آخر">
+            <Inp value={failReason} onChange={setFailReason} placeholder="اكتب هنا..."/>
+          </Fld>
+          <div style={{ display:'flex', gap:10, marginTop:12 }}>
+            <Btn onClick={confirmFailed} color="#ef4444" disabled={!failReason.trim()} loading={processing.includes(failModal?.id)}>❌ تأكيد عدم التسليم</Btn>
+            <Btn onClick={() => { setFailModal(null); setFailReason('') }} color="rgba(255,255,255,.1)">إلغاء</Btn>
+          </div>
+        </Modal>
+      )}
+
+      <div style={{ background:'linear-gradient(135deg,rgba(249,115,22,.12),rgba(249,115,22,.04))', border:'1px solid rgba(249,115,22,.3)', borderRadius:16, padding:'16px 20px', marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:50, height:50, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#f97316aa)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:900, color:'white', boxShadow:'0 0 14px #f9731644' }}>{selectedDriver.name?.charAt(0)}</div>
+          <div>
+            <div style={{ fontSize:18, fontWeight:900, color:'white' }}>{selectedDriver.name}</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📍 {selectedDriver.zone} • 📱 {selectedDriver.phone||'—'}</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={gpsActive ? stopGPS : startGPS}
+            className="btn-ripple"
+            style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 20px', borderRadius:12, border:`2px solid ${gpsActive?'rgba(16,185,129,.6)':'rgba(255,255,255,.2)'}`, background:gpsActive?'rgba(16,185,129,.18)':'rgba(255,255,255,.06)', color:gpsActive?'#6ee7b7':'rgba(255,255,255,.65)', cursor:'pointer', fontSize:13, fontWeight:800, fontFamily:'inherit', transition:'all .25s', boxShadow:gpsActive?'0 0 16px rgba(16,185,129,.3)':'none' }}>
+            <span style={{ fontSize:17, display:'inline-block', animation:gpsActive?'pulse 1.5s infinite':undefined }}>📡</span>
+            {gpsActive ? 'GPS شغّال' : 'تفعيل GPS'}
+            {gpsActive && <span style={{ width:9, height:9, borderRadius:'50%', background:'#10b981', display:'inline-block', animation:'ping 1.2s infinite' }}/>}
+          </button>
+          <button onClick={() => { setSelectedDriver(null); stopGPS() }}
+            style={{ padding:'9px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,.1)', background:'rgba(255,255,255,.04)', color:'rgba(255,255,255,.4)', cursor:'pointer', fontSize:12, fontFamily:'inherit', transition:'background .15s' }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.08)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.04)'}>
+            🔄 تغيير المندوب
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:18 }}>
+        <Kpi label="⏳ ينتظر الاستلام" value={pendingOrders.length} color="#f97316"/>
+        <Kpi label="🚀 في الطريق" value={onWayOrders.length} color="#3b5bfe"/>
+        <Kpi label="📡 GPS" value={gpsActive?'شغّال ✅':'متوقف'} color={gpsActive?'#10b981':'#6b7280'}/>
+      </div>
+
+      {myOrders.length === 0 && (
+        <Card><div style={{ textAlign:'center', padding:60 }}>
+          <div style={{ fontSize:56, marginBottom:12 }}>📭</div>
+          <div style={{ fontSize:18, fontWeight:800, color:'white' }}>مفيش أوردرات دلوقتي</div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>الصفحة بتتحدث تلقائياً لما يجي أوردر جديد</div>
+        </div></Card>
+      )}
+
+      {pendingOrders.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:'#f97316', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ position:'relative', width:10, height:10 }}>
+              <div style={{ position:'absolute', inset:0, borderRadius:'50%', background:'#f97316', animation:'ping 1.4s infinite' }}/>
+              <div style={{ position:'absolute', inset:0, borderRadius:'50%', background:'#f97316' }}/>
+            </div>
+            أوردرات تنتظر استلامك ({pendingOrders.length})
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
+            {pendingOrders.map(o => {
+              const prods = parseProducts(o.products)
+              return (
+                <div key={o.id} style={{ background:'rgba(249,115,22,.07)', border:'1px solid rgba(249,115,22,.4)', borderRadius:16, padding:18, animation:'fadeUp .3s ease' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:17, fontWeight:900, color:'white' }}>{o.customer}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3 }}>📍 {o.address || o.zone}</div>
+                      {o.phone && <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📱 {o.phone}</div>}
+                    </div>
+                    <div style={{ textAlign:'left' }}>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#fcd34d' }}>{fmt(o.value)} ج</div>
+                      <div style={{ fontSize:11, color:PAY_C[o.payment_method]||'white', fontWeight:700, marginTop:2 }}>{PAY_ICONS[o.payment_method]} {o.payment_method}</div>
+                    </div>
+                  </div>
+                  {prods.length > 0 && (
+                    <div style={{ background:'rgba(255,255,255,.05)', borderRadius:9, padding:'8px 10px', marginBottom:10 }}>
+                      {prods.map((p,i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'4px 0', borderBottom:i<prods.length-1?'1px solid rgba(255,255,255,.05)':'none' }}>
+                          <span style={{ color:'white' }}>{p.name}</span>
+                          <span style={{ color:'#86efac', fontWeight:700 }}>× {p.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.notes && <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:8, padding:'7px 11px', marginBottom:10, fontSize:12, color:'#fcd34d' }}>📝 {o.notes}</div>}
+                  <Btn onClick={() => confirmReceived(o.id)} loading={processing.includes(o.id)} color="#f97316" style={{ width:'100%', justifyContent:'center', fontSize:15, padding:'12px' }}>📦 استلمت الأوردر</Btn>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {onWayOrders.length > 0 && (
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:'#86efac', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ animation:'float 2.5s ease infinite', display:'inline-block' }}>🚀</span>
+            أوردرات في الطريق ({onWayOrders.length})
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
+            {onWayOrders.map(o => {
+              const prods = parseProducts(o.products)
+              return (
+                <div key={o.id} style={{ background:'rgba(16,185,129,.06)', border:'1px solid rgba(16,185,129,.35)', borderRadius:16, padding:18, animation:'fadeUp .3s ease' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:17, fontWeight:900, color:'white' }}>{o.customer}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3 }}>📍 {o.address || o.zone}</div>
+                      {o.phone && <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>📱 {o.phone}</div>}
+                    </div>
+                    <div style={{ textAlign:'left' }}>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#fcd34d' }}>{fmt(o.value)} ج</div>
+                      <div style={{ fontSize:11, color:PAY_C[o.payment_method]||'white', fontWeight:700, marginTop:2 }}>{PAY_ICONS[o.payment_method]} {o.payment_method}</div>
+                    </div>
+                  </div>
+                  {prods.length > 0 && (
+                    <div style={{ background:'rgba(255,255,255,.05)', borderRadius:9, padding:'8px 10px', marginBottom:10 }}>
+                      {prods.map((p,i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'4px 0', borderBottom:i<prods.length-1?'1px solid rgba(255,255,255,.05)':'none' }}>
+                          <span style={{ color:'white' }}>{p.name}</span>
+                          <span style={{ color:'#86efac', fontWeight:700 }}>× {p.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.notes && <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:8, padding:'7px 11px', marginBottom:10, fontSize:12, color:'#fcd34d' }}>📝 {o.notes}</div>}
+                  {(o.address || o.zone) && (
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(o.address || o.zone)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.25)', borderRadius:9, marginBottom:12, color:'#93c5fd', fontSize:12, fontWeight:700, textDecoration:'none' }}>
+                      🗺 افتح الموقع على الخريطة
+                    </a>
+                  )}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
+                    <Btn onClick={() => confirmDelivered(o.id)} loading={processing.includes(o.id)} color="#10b981" style={{ justifyContent:'center', fontSize:13, padding:'11px' }}>✅ تم التسليم والتحصيل</Btn>
+                    <Btn onClick={() => { setFailModal(o); setFailReason('') }} color="#ef4444" style={{ justifyContent:'center', fontSize:13, padding:'11px' }}>❌ لم يتم التسليم</Btn>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop:24, textAlign:'center' }}>
+        <button onClick={fetchMyOrders}
+          style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.1)', borderRadius:10, padding:'10px 24px', color:'rgba(255,255,255,.45)', cursor:'pointer', fontSize:13, fontFamily:'inherit', transition:'all .15s' }}
+          onMouseEnter={e => { e.currentTarget.style.color='white'; e.currentTarget.style.background='rgba(255,255,255,.09)' }}
+          onMouseLeave={e => { e.currentTarget.style.color='rgba(255,255,255,.45)'; e.currentTarget.style.background='rgba(255,255,255,.05)' }}>
+          ↻ تحديث الأوردرات
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+// [هنا يجي كل الكود الباقي بالظبط: Home, Orders, OrderModal,
+//  Analytics, Drivers, DriverForm, Zones, ZoneModal,
+//  Vehicles, VehicleForm, Trips, TripForm, Pricing,
+//  Report, Notifs, Settings, Users, UserForm,
+//  RefreshBar, ShortcutsModal, LoadingScreen,
+//  notifCount, DeliverySystem — كلهم كما هم]
+// ══════════════════════════════════════════════════════
+
+// ... [نفس الكود الأصلي بالكامل حتى نهاية DeliverySystem] ...
+
+// ══════════════════════════════════════════════════════
+//  STANDALONE KITCHEN PAGE
+// ══════════════════════════════════════════════════════
+function StandaloneKitchenPage() {
+  const { data, loading, refetch } = useData()
+  useEffect(() => { injectStyles() }, [])
+  if (loading) return <LoadingScreen />
+  return (
+    <ToastProvider>
+      <div style={{ background:'#0a0a0f', minHeight:'100vh', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif" }}>
+        <div style={{ background:'linear-gradient(135deg,rgba(234,179,8,.15),rgba(234,179,8,.05))', borderBottom:'1px solid rgba(234,179,8,.25)', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100, backdropFilter:'blur(10px)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:12, background:'rgba(234,179,8,.2)', border:'1px solid rgba(234,179,8,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>👨‍🍳</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:900, color:'white' }}>منطقة التحضير</div>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>{data.settings?.companyName || 'دليفري'}</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            {/* Counter badges */}
+            <div style={{ background:'rgba(59,91,254,.15)', border:'1px solid rgba(59,91,254,.3)', borderRadius:9, padding:'4px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#7b9fff' }}>
+                {data.orders.filter(o => o.status === 'استُلم الطلب').length}
+              </div>
+              <div style={{ fontSize:8, color:'rgba(255,255,255,.35)' }}>جديد</div>
+            </div>
+            <div style={{ background:'rgba(234,179,8,.15)', border:'1px solid rgba(234,179,8,.3)', borderRadius:9, padding:'4px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#fcd34d' }}>
+                {data.orders.filter(o => o.status === 'قيد التحضير').length}
+              </div>
+              <div style={{ fontSize:8, color:'rgba(255,255,255,.35)' }}>جاري</div>
+            </div>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,.25)', background:'rgba(234,179,8,.08)', border:'1px solid rgba(234,179,8,.2)', padding:'3px 10px', borderRadius:7, fontWeight:700 }}>🔒 مطبخ فقط</span>
+          </div>
+        </div>
+        <div style={{ padding:20, maxWidth:1200, margin:'0 auto' }}>
+          <KitchenView data={data} refetch={refetch} />
+        </div>
+      </div>
+    </ToastProvider>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  STANDALONE DELIVERY PAGE
+// ══════════════════════════════════════════════════════
+function StandaloneDeliveryPage() {
+  const { data, loading, refetch } = useData()
+  useEffect(() => { injectStyles() }, [])
+  if (loading) return <LoadingScreen />
+  return (
+    <ToastProvider>
+      <div style={{ background:'#0a0a0f', minHeight:'100vh', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif" }}>
+        <div style={{ background:'linear-gradient(135deg,rgba(249,115,22,.15),rgba(249,115,22,.05))', borderBottom:'1px solid rgba(249,115,22,.25)', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100, backdropFilter:'blur(10px)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:38, height:38, borderRadius:12, background:'rgba(249,115,22,.2)', border:'1px solid rgba(249,115,22,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🛵</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:900, color:'white' }}>بوابة المندوب</div>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>{data.settings?.companyName || 'دليفري'}</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ background:'rgba(249,115,22,.15)', border:'1px solid rgba(249,115,22,.3)', borderRadius:9, padding:'4px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#fdba74' }}>
+                {data.orders.filter(o => ['تم تعيين المندوب','جاهز للشحن','في الطريق'].includes(o.status)).length}
+              </div>
+              <div style={{ fontSize:8, color:'rgba(255,255,255,.35)' }}>أوردرات نشطة</div>
+            </div>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,.25)', background:'rgba(249,115,22,.08)', border:'1px solid rgba(249,115,22,.2)', padding:'3px 10px', borderRadius:7, fontWeight:700 }}>🔒 مندوبين فقط</span>
+          </div>
+        </div>
+        <div style={{ padding:20, maxWidth:900, margin:'0 auto' }}>
+          <DeliveryView data={data} refetch={refetch} />
+        </div>
+      </div>
+    </ToastProvider>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  APP ROUTER — نقطة الدخول الرئيسية
+// ══════════════════════════════════════════════════════
+export default function AppRouter() {
+  const [view, setView] = useState(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const v = params.get('view')
+      setView(v || 'main')
+    }
+  }, [])
+
+  // Splash أثناء تحديد الـ view
+  if (!view) return (
+    <div style={{ background:'#0a0a0f', height:'100vh', display:'flex', alignItems:'center',
+      justifyContent:'center', flexDirection:'column', gap:14,
+      fontFamily:"'Cairo',Tahoma,sans-serif" }}>
+      <div style={{ fontSize:40, animation:'spin .9s linear infinite', display:'inline-block' }}>⟳</div>
+      <div style={{ color:'rgba(255,255,255,.3)', fontSize:13 }}>جاري التحميل...</div>
+    </div>
+  )
+
+  if (view === 'kitchen')  return <StandaloneKitchenPage />
+  if (view === 'delivery') return <StandaloneDeliveryPage />
+  return <DeliverySystem />
+}
+
 
 // ══════════════════════════════════════════════════════
 //  DATA HOOK
