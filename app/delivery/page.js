@@ -1921,7 +1921,7 @@ function RefreshBar({ lastUpdate, onRefresh }) {
   const [secs, setSecs] = useState(60)
   useEffect(() => {
     setSecs(60)
-    const t = setInterval(() => setSecs(s => { if (s <= 1) { onRefresh(); return 60 } return s - 1 }), 1000)
+    const t = setInterval(() => setSecs(s => { return s - 1 }), 1000)
     return () => clearInterval(t)
   }, [lastUpdate])
   return (
