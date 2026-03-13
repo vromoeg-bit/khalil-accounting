@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const KITCHEN_PASSWORD = '1234' // غير الباسورد هنا
 

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const DELIVERY_PASSWORD = '5678' // غير الباسورد هنا
 
