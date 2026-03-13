@@ -2148,7 +2148,7 @@ export default function DeliverySystem() {
               <span style={{ fontSize:15, fontWeight:800, color:'white' }}>
                 {allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}
               </span>
-              <RefreshBar lastUpdate={lastUpdate} onRefresh={refetch}/>
+              <RefreshBar lastUpdate={lastUpdate} onRefresh={() => {}}/>
             </div>
           </div>
 
