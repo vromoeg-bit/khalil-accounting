@@ -497,7 +497,7 @@ function useData() {
     setLoading(false)
   }, [])
   useEffect(() => { fetchAll() }, [fetchAll])
-  // auto-refresh every 60s
+  // auto-refresh every 30000s
   useEffect(() => {
   // const t = setInterval(fetchAll, 60000)
   // return () => clearInterval(t)
