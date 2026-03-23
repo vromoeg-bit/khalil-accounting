@@ -2506,7 +2506,7 @@ function DailyShifts({ data, refetch }) {
   )
 }
 
-
+function notifCount(data) {
   const { orders, zones, settings } = data
   const now = new Date(); const today = now.toISOString().slice(0,10)
   const uMin = settings.unassignedAlert||15; const dSLA = settings.defaultSLA||40
