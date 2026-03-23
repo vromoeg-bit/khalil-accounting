@@ -108,10 +108,13 @@ const NAV = [
   { id:'home',      label:'الرئيسية',    icon:'🏠', group:'main' },
   { id:'orders',    label:'الطلبات',     icon:'📦', group:'main' },
   { id:'analytics', label:'التحليلات',   icon:'📈', group:'main' },
+  { id:'prep',      label:'التحضير',     icon:'🍳', group:'ops' },
+  { id:'tracking',  label:'تتبع الدليفري',icon:'📍', group:'ops' },
   { id:'drivers',   label:'المندوبين',   icon:'🏍', group:'ops' },
   { id:'zones',     label:'المناطق',     icon:'🗺', group:'ops' },
   { id:'vehicles',  label:'المركبات',    icon:'🚗', group:'ops' },
   { id:'trips',     label:'الرحلات',     icon:'🕐', group:'ops' },
+  { id:'shifts',    label:'الشفتات',     icon:'📅', group:'config' },
   { id:'pricing',   label:'الأسعار',     icon:'💰', group:'config' },
   { id:'report',    label:'التقارير',    icon:'📊', group:'config' },
   { id:'notifs',    label:'التنبيهات',   icon:'🔔', group:'config' },
@@ -470,12 +473,12 @@ const Checkbox = ({ checked, onChange }) => (
 //  DATA HOOK
 // ══════════════════════════════════════════════════════
 function useData() {
-  const [data, setData] = useState({ orders:[], drivers:[], zones:[], vehicles:[], trips:[], users:[], settings:{} })
+  const [data, setData] = useState({ orders:[], drivers:[], zones:[], vehicles:[], trips:[], users:[], settings:{}, shifts:[] })
   const [loading, setLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [ord, drv, zon, veh, trp, usr, set] = await Promise.all([
+    const [ord, drv, zon, veh, trp, usr, set, shf] = await Promise.all([
       supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
       supabase.from('delivery_drivers').select('*'),
       supabase.from('delivery_zones').select('*'),
@@ -483,6 +486,7 @@ function useData() {
       supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
       supabase.from('delivery_users').select('*'),
       supabase.from('delivery_settings').select('*').single(),
+      supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
     ])
     setData({
       orders:   ord.data  || [],
@@ -492,6 +496,7 @@ function useData() {
       trips:    trp.data  || [],
       users:    usr.data  || [],
       settings: set.data  || { companyName:'دليفري خليل الحلواني', unassignedAlert:15, defaultSLA:40 },
+      shifts:   shf.data  || [],
     })
     setLastUpdate(new Date())
     setLoading(false)
@@ -1981,9 +1986,527 @@ function LoadingScreen() {
 }
 
 // ══════════════════════════════════════════════════════
-//  MAIN APP
+//  PREP STATION  —  محطة التحضير
 // ══════════════════════════════════════════════════════
-function notifCount(data) {
+function PrepStation({ data, refetch }) {
+  const prepOrders = data.orders.filter(o => o.status === 'قيد التحضير')
+  const [done, setDone]   = useState([])
+  const [sound, setSound] = useState(true)
+  const prevLen = useRef(prepOrders.length)
+
+  // Notification sound using Web Audio API
+  const playBeep = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.frequency.value = 880; osc.type = 'sine'
+      gain.gain.setValueAtTime(0.4, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
+    } catch {}
+  }, [])
+
+  // Alert on new prep orders
+  useEffect(() => {
+    if (prepOrders.length > prevLen.current && sound) playBeep()
+    prevLen.current = prepOrders.length
+  }, [prepOrders.length, sound, playBeep])
+
+  const markReady = async (id) => {
+    setDone(d => [...d, id])
+    await supabase.from('delivery_orders').update({ status:'جاهز للشحن' }).eq('id', id)
+    setTimeout(() => { setDone(d => d.filter(x => x !== id)); refetch(); toast.success('تم تحويل الطلب للشحن ✅') }, 600)
+  }
+
+  return (
+    <div className="page-enter">
+      {/* Header */}
+      <div style={{ background:'linear-gradient(135deg,#eab308,#f97316)', borderRadius:16, padding:'18px 22px', marginBottom:18, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div>
+          <div style={{ fontSize:22, fontWeight:900, color:'white' }}>🍳 محطة التحضير</div>
+          <div style={{ fontSize:12, color:'rgba(255,255,255,.75)', marginTop:3 }}>الطلبات المنتظرة للتحضير</div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ background:'rgba(255,255,255,.2)', borderRadius:12, padding:'8px 16px', textAlign:'center' }}>
+            <div style={{ fontSize:28, fontWeight:900, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{prepOrders.length}</div>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>طلب</div>
+          </div>
+          <button onClick={() => setSound(s=>!s)} style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:10, padding:'8px 12px', cursor:'pointer', color:'white', fontSize:18 }} title={sound?'إيقاف الصوت':'تشغيل الصوت'}>
+            {sound ? '🔔' : '🔕'}
+          </button>
+        </div>
+      </div>
+
+      {prepOrders.length === 0 ? (
+        <Card>
+          <div style={{ textAlign:'center', padding:60 }}>
+            <div style={{ fontSize:64, marginBottom:12, animation:'float 3s ease infinite' }}>✅</div>
+            <div style={{ fontSize:18, fontWeight:800, color:'white' }}>كل الطلبات جاهزة!</div>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>لا يوجد طلبات في التحضير حالياً</div>
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16 }}>
+          {prepOrders.map((o, idx) => {
+            const prods   = parseProducts(o.products)
+            const isDone  = done.includes(o.id)
+            const age     = Math.floor((Date.now() - new Date(o.created_at)) / 60000)
+            const urgent  = age > 15
+            return (
+              <div key={o.id} style={{ background:isDone?'rgba(16,185,129,.1)':'rgba(255,255,255,.04)', border:`2px solid ${isDone?'rgba(16,185,129,.5)':urgent?'rgba(239,68,68,.4)':'rgba(234,179,8,.25)'}`, borderRadius:18, overflow:'hidden', transition:'all .3s', animation:`fadeUp .3s ease ${idx*.05}s both`, opacity:isDone?.6:1, transform:isDone?'scale(.97)':'scale(1)' }}>
+
+                {/* Order Header */}
+                <div style={{ background:urgent?'rgba(239,68,68,.15)':'rgba(234,179,8,.12)', padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:16, fontWeight:900, color:'white' }}>{o.customer}</div>
+                    <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', marginTop:2 }}>📍 {o.zone} {o.address ? `— ${o.address}` : ''}</div>
+                  </div>
+                  <div style={{ textAlign:'left' }}>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:'rgba(255,255,255,.4)' }}>#{o.id}</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:urgent?'#fca5a5':'#fcd34d', marginTop:2 }}>⏱ {age} دقيقة</div>
+                  </div>
+                </div>
+
+                {/* Products */}
+                <div style={{ padding:'12px 16px' }}>
+                  {prods.length > 0 ? (
+                    <div style={{ marginBottom:12 }}>
+                      {prods.map((p,i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
+                          <span style={{ fontSize:14, color:'white', fontWeight:600 }}>{p.name}</span>
+                          <span style={{ fontSize:14, fontWeight:800, color:'#86efac', background:'rgba(16,185,129,.15)', padding:'2px 10px', borderRadius:8 }}>×{p.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginBottom:12, textAlign:'center', padding:'8px 0' }}>لا توجد أصناف مسجلة</div>
+                  )}
+
+                  {o.notes && (
+                    <div style={{ background:'rgba(59,91,254,.1)', border:'1px solid rgba(59,91,254,.2)', borderRadius:8, padding:'7px 10px', fontSize:12, color:'#7b9fff', marginBottom:10 }}>
+                      📝 {o.notes}
+                    </div>
+                  )}
+
+                  {/* Value + Action */}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:4 }}>
+                    <span style={{ fontSize:16, fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(o.value)} ج</span>
+                    <button onClick={() => markReady(o.id)} disabled={isDone}
+                      style={{ background:isDone?'#10b981':'linear-gradient(135deg,#10b981,#059669)', border:'none', borderRadius:12, padding:'10px 20px', fontSize:14, fontWeight:800, color:'white', cursor:isDone?'default':'pointer', transition:'all .2s', transform:isDone?'scale(.95)':'scale(1)', boxShadow:isDone?'none':'0 4px 14px rgba(16,185,129,.4)' }}>
+                      {isDone ? '✅ تم' : '✅ جاهز للشحن'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Stats bar */}
+      <div style={{ marginTop:16, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:10 }}>
+        <Kpi label="⏳ في التحضير" value={prepOrders.length} color="#eab308" urgent={prepOrders.length>3}/>
+        <Kpi label="✅ جاهز للشحن" value={data.orders.filter(o=>o.status==='جاهز للشحن').length} color="#a855f7"/>
+        <Kpi label="🚀 في الطريق" value={data.orders.filter(o=>o.status==='في الطريق').length} color="#22c55e"/>
+        <Kpi label="📦 اليوم" value={data.orders.filter(o=>o.created_at?.slice(0,10)===new Date().toISOString().slice(0,10)).length} color="#3b5bfe"/>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  DELIVERY TRACKER  —  تتبع الدليفري + GPS
+// ══════════════════════════════════════════════════════
+function DeliveryTracker({ data, refetch }) {
+  const { drivers, orders } = data
+  const [myDriverId,    setMyDriverId]    = useState('')
+  const [gpsActive,     setGpsActive]     = useState(false)
+  const [gpsWatcher,    setGpsWatcher]    = useState(null)
+  const [myCoords,      setMyCoords]      = useState(null)
+  const [driverLocs,    setDriverLocs]    = useState({})
+  const [selectedDrv,   setSelectedDrv]   = useState(null)
+  const [mode,          setMode]          = useState('admin') // 'admin' | 'driver'
+
+  // Fetch driver locations from Supabase
+  const fetchLocations = useCallback(async () => {
+    const { data: locs } = await supabase.from('delivery_driver_locations').select('*')
+    if (locs) {
+      const map = {}; locs.forEach(l => { map[l.driver_id] = l }); setDriverLocs(map)
+    }
+  }, [])
+
+  useEffect(() => { fetchLocations(); const t = setInterval(fetchLocations, 15000); return () => clearInterval(t) }, [fetchLocations])
+
+  // Start GPS sharing
+  const startGPS = () => {
+    if (!myDriverId) { toast.error('اختر اسمك أولاً'); return }
+    if (!navigator.geolocation) { toast.error('المتصفح لا يدعم GPS'); return }
+    const wid = navigator.geolocation.watchPosition(async (pos) => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords
+      setMyCoords({ lat, lng, accuracy })
+      await supabase.from('delivery_driver_locations').upsert([{
+        driver_id: parseInt(myDriverId), lat, lng, accuracy,
+        updated_at: new Date().toISOString(),
+        driver_name: drivers.find(d=>d.id===parseInt(myDriverId))?.name || ''
+      }], { onConflict: 'driver_id' })
+    }, (err) => { toast.error('تعذر الحصول على الموقع: ' + err.message) },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 })
+    setGpsWatcher(wid); setGpsActive(true); toast.success('تم تفعيل مشاركة الموقع 📍')
+  }
+
+  const stopGPS = () => {
+    if (gpsWatcher !== null) navigator.geolocation.clearWatch(gpsWatcher)
+    setGpsWatcher(null); setGpsActive(false); setMyCoords(null); toast.info('تم إيقاف مشاركة الموقع')
+  }
+
+  const updateOrderStatus = async (orderId, status) => {
+    await supabase.from('delivery_orders').update({ status }).eq('id', orderId); refetch()
+    toast.success(`تم تحديث الحالة: ${status}`)
+  }
+
+  const activeDrivers = drivers.filter(d => d.status === 'شغال')
+  const myOrders = myDriverId ? orders.filter(o => o.driver_id === parseInt(myDriverId) && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) : []
+
+  return (
+    <div className="page-enter">
+      {/* Mode Switch */}
+      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+        {[['admin','👁 عرض الأدمن'],['driver','🏍 وضع السائق']].map(([m,l]) => (
+          <button key={m} onClick={() => setMode(m)} style={{ padding:'8px 18px', borderRadius:10, border:`2px solid ${mode===m?'#3b5bfe':'rgba(255,255,255,.1)'}`, background:mode===m?'rgba(59,91,254,.2)':'transparent', color:mode===m?'white':'rgba(255,255,255,.5)', cursor:'pointer', fontFamily:'inherit', fontWeight:700, fontSize:13, transition:'all .2s' }}>{l}</button>
+        ))}
+      </div>
+
+      {mode === 'driver' ? (
+        /* ── DRIVER MODE ── */
+        <div>
+          <Card neon>
+            <div style={{ fontWeight:800, marginBottom:14, color:'white', fontSize:15 }}>🏍 وضع السائق</div>
+            <Fld label="اختر اسمك">
+              <Sel value={myDriverId} onChange={setMyDriverId} options={drivers.map(d=>({v:d.id,l:d.name}))}/>
+            </Fld>
+            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+              {!gpsActive
+                ? <Btn onClick={startGPS} color="#10b981">📍 ابدأ مشاركة الموقع</Btn>
+                : <Btn onClick={stopGPS}  color="#ef4444">⏹ إيقاف الموقع</Btn>
+              }
+              {gpsActive && myCoords && (
+                <span style={{ fontSize:11, color:'#6ee7b7', fontFamily:"'JetBrains Mono',monospace" }}>
+                  📍 {myCoords.lat.toFixed(5)}, {myCoords.lng.toFixed(5)} ± {Math.round(myCoords.accuracy)}م
+                </span>
+              )}
+            </div>
+            {gpsActive && (
+              <div style={{ marginTop:10, background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.25)', borderRadius:10, padding:'8px 14px', display:'flex', alignItems:'center', gap:8, fontSize:12 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', display:'inline-block', animation:'pulse 1s infinite' }}/>
+                <span style={{ color:'#6ee7b7' }}>موقعك بيتحدث تلقائياً كل ثانية</span>
+              </div>
+            )}
+          </Card>
+
+          {/* Driver's Active Orders */}
+          {myDriverId && (
+            <div>
+              <SectionTitle>📦 طلباتي النشطة ({myOrders.length})</SectionTitle>
+              {myOrders.length === 0
+                ? <Card><div style={{ textAlign:'center', padding:30, color:'rgba(255,255,255,.3)' }}>لا يوجد طلبات نشطة</div></Card>
+                : myOrders.map(o => (
+                  <div key={o.id} style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:14, padding:16, marginBottom:12, animation:'fadeUp .3s ease' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                      <div>
+                        <div style={{ fontSize:16, fontWeight:800, color:'white' }}>{o.customer}</div>
+                        <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:2 }}>📍 {o.zone} {o.address ? `— ${o.address}`:''}</div>
+                        {o.phone && <div style={{ fontSize:12, color:'#7b9fff', marginTop:2 }}>📱 <a href={`tel:${o.phone}`} style={{ color:'#7b9fff', textDecoration:'none' }}>{o.phone}</a></div>}
+                      </div>
+                      <div style={{ textAlign:'left' }}>
+                        <div style={{ fontSize:16, fontWeight:900, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(o.value)} ج</div>
+                        <Badge s={o.status}/>
+                      </div>
+                    </div>
+                    {/* Status update buttons */}
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      {o.status === 'تم تعيين المندوب' && (
+                        <Btn onClick={() => updateOrderStatus(o.id, 'في الطريق')} color="#22c55e">🚀 في الطريق</Btn>
+                      )}
+                      {o.status === 'في الطريق' && <>
+                        <Btn onClick={() => updateOrderStatus(o.id, 'تم التسليم')} color="#10b981">✅ تم التسليم</Btn>
+                        <Btn onClick={() => updateOrderStatus(o.id, 'فشل التسليم')} color="#ef4444" small>❌ فشل</Btn>
+                      </>}
+                      {o.address && (
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent(o.address+' '+o.zone)}`} target="_blank" rel="noreferrer"
+                          style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'5px 12px', borderRadius:8, background:'rgba(59,130,246,.2)', color:'#93c5fd', textDecoration:'none', fontSize:12, fontWeight:700 }}>
+                          🗺 خرائط Google
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── ADMIN MODE ── */
+        <div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:16 }}>
+            <Kpi label="🏍 شغّالين" value={activeDrivers.length} color="#10b981"/>
+            <Kpi label="📍 مشاركين موقع" value={Object.keys(driverLocs).length} color="#3b5bfe"/>
+            <Kpi label="🚀 في الطريق" value={orders.filter(o=>o.status==='في الطريق').length} color="#22c55e"/>
+            <Kpi label="📦 لم يُستلم" value={orders.filter(o=>o.status==='تم تعيين المندوب').length} color="#f59e0b"/>
+          </div>
+
+          {/* Drivers Map Cards */}
+          <SectionTitle>📍 مواقع المندوبين</SectionTitle>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14, marginBottom:16 }}>
+            {activeDrivers.map(d => {
+              const loc     = driverLocs[d.id]
+              const hasLoc  = !!loc
+              const ageMin  = loc ? Math.floor((Date.now()-new Date(loc.updated_at))/60000) : null
+              const fresh   = ageMin !== null && ageMin < 5
+              const dOrders = orders.filter(o => o.driver_id === d.id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
+              return (
+                <div key={d.id} className="card-hover" style={{ background:'rgba(255,255,255,.04)', border:`1px solid ${selectedDrv===d.id?'rgba(59,91,254,.5)':'rgba(255,255,255,.08)'}`, borderRadius:14, overflow:'hidden', cursor:'pointer' }} onClick={() => setSelectedDrv(selectedDrv===d.id?null:d.id)}>
+                  <div style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:10, borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+                    <div style={{ width:38, height:38, borderRadius:'50%', background:`linear-gradient(135deg,#3b5bfe,#6366f1)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:15, fontWeight:800, flexShrink:0 }}>{d.name?.charAt(0)}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:800, color:'white', fontSize:13 }}>{d.name}</div>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>{dOrders.length} طلب نشط</div>
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
+                      <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:hasLoc&&fresh?'rgba(16,185,129,.2)':'rgba(255,255,255,.07)', color:hasLoc&&fresh?'#6ee7b7':'rgba(255,255,255,.3)' }}>
+                        {hasLoc ? (fresh?`📍 منذ ${ageMin}د`:`⚠ ${ageMin}د`):'📍 غير متاح'}
+                      </span>
+                    </div>
+                  </div>
+                  {hasLoc && (
+                    <div style={{ padding:'10px 14px' }}>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>
+                        {loc.lat?.toFixed(5)}, {loc.lng?.toFixed(5)}
+                      </div>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <a href={`https://maps.google.com/?q=${loc.lat},${loc.lng}`} target="_blank" rel="noreferrer"
+                          style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'5px 10px', borderRadius:8, background:'rgba(59,130,246,.2)', color:'#93c5fd', textDecoration:'none', fontSize:11, fontWeight:700, flex:1, justifyContent:'center' }}>
+                          🗺 فتح Google Maps
+                        </a>
+                        <a href={`https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lng}#map=16/${loc.lat}/${loc.lng}`} target="_blank" rel="noreferrer"
+                          style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'5px 10px', borderRadius:8, background:'rgba(16,185,129,.2)', color:'#6ee7b7', textDecoration:'none', fontSize:11, fontWeight:700 }}>
+                          🌍
+                        </a>
+                      </div>
+                      {/* Mini Map Embed */}
+                      {selectedDrv === d.id && (
+                        <div style={{ marginTop:10, borderRadius:10, overflow:'hidden', border:'1px solid rgba(255,255,255,.1)' }}>
+                          <iframe title={`map-${d.id}`} width="100%" height="180" frameBorder="0" scrolling="no"
+                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${loc.lng-.008},${loc.lat-.008},${loc.lng+.008},${loc.lat+.008}&layer=mapnik&marker=${loc.lat},${loc.lng}`}
+                            style={{ display:'block' }}/>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!hasLoc && (
+                    <div style={{ padding:'10px 14px', textAlign:'center', color:'rgba(255,255,255,.2)', fontSize:12 }}>
+                      المندوب لم يفعّل مشاركة الموقع بعد
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Active Orders Table */}
+          <Card>
+            <SectionTitle>🚀 الطلبات في الطريق</SectionTitle>
+            <Tbl cols={['العميل','المنطقة','المندوب','القيمة','الحالة','منذ','الخريطة']} rows={
+              orders.filter(o=>['في الطريق','تم تعيين المندوب'].includes(o.status)).map(o => {
+                const drv = drivers.find(d => d.id === o.driver_id)
+                const loc = drv ? driverLocs[drv.id] : null
+                return (
+                  <Tr key={o.id}>
+                    <Td>
+                      <div style={{ fontWeight:700, color:'white' }}>{o.customer}</div>
+                      {o.phone && <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>{o.phone}</div>}
+                    </Td>
+                    <Td style={{ color:'rgba(255,255,255,.5)', fontSize:12 }}>{o.zone}</Td>
+                    <Td style={{ color:'rgba(255,255,255,.6)', fontSize:12 }}>{drv?.name||'—'}</Td>
+                    <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(o.value)} ج</Td>
+                    <Td><Badge s={o.status}/></Td>
+                    <Td style={{ fontSize:11, color:'rgba(255,255,255,.35)' }}>{fmtRelative(o.created_at)}</Td>
+                    <Td>
+                      {loc
+                        ? <a href={`https://maps.google.com/?q=${loc.lat},${loc.lng}`} target="_blank" rel="noreferrer" style={{ color:'#93c5fd', textDecoration:'none', fontSize:12 }}>📍 عرض</a>
+                        : <span style={{ color:'rgba(255,255,255,.2)', fontSize:11 }}>—</span>}
+                    </Td>
+                  </Tr>
+                )
+              })
+            }/>
+          </Card>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  DAILY SHIFTS  —  إدارة الشفتات اليومية
+// ══════════════════════════════════════════════════════
+function DailyShifts({ data, refetch }) {
+  const { orders, shifts } = data
+  const [notes, setNotes]   = useState('')
+  const [opening, setOpen]  = useState(false)
+  const [closing, setClose] = useState(false)
+  const [conf,    setConf]  = useState(null)
+  const today = new Date().toISOString().slice(0,10)
+
+  const todayShifts = shifts.filter(s => s.date === today)
+  const openShift   = todayShifts.find(s => s.status === 'open')
+  const hasM = todayShifts.some(s => s.shift_type === 'صباحي')
+  const hasE = todayShifts.some(s => s.shift_type === 'مسائي')
+
+  // Orders for current open shift
+  const shiftOrders = openShift
+    ? orders.filter(o => o.created_at >= openShift.opened_at)
+    : []
+  const shiftRevenue  = shiftOrders.filter(o=>o.status==='تم التسليم').reduce((s,o)=>s+parseFloat(o.value||0),0)
+  const shiftDelivered = shiftOrders.filter(o=>o.status==='تم التسليم').length
+
+  const openNewShift = async (type) => {
+    setOpen(true)
+    const res = await supabase.from('delivery_shifts').insert([{
+      date: today, shift_type: type, status: 'open',
+      opened_at: new Date().toISOString(), opened_by: 'مدير النظام',
+      orders_count: 0, revenue: 0
+    }])
+    setOpen(false)
+    if (res.error) { toast.error('خطأ: ' + res.error.message); return }
+    toast.success(`تم فتح الشفت ${type} 🟢`); refetch()
+  }
+
+  const closeShift = async () => {
+    if (!openShift) return
+    setClose(true)
+    const res = await supabase.from('delivery_shifts').update({
+      status: 'closed', closed_at: new Date().toISOString(),
+      orders_count: shiftOrders.length, revenue: shiftRevenue,
+      notes: notes || ''
+    }).eq('id', openShift.id)
+    setClose(false); setConf(null)
+    if (res.error) { toast.error('خطأ: ' + res.error.message); return }
+    toast.success('تم غلق الشفت وتسجيل الملخص ✅'); setNotes(''); refetch()
+  }
+
+  const SHIFT_COLOR = { صباحي:'#f59e0b', مسائي:'#3b5bfe' }
+  const STATUS_C    = { open:'#10b981', closed:'#6b7280' }
+
+  return (
+    <div className="page-enter">
+      {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)} danger={false}/>}
+
+      {/* Today Header */}
+      <div style={{ background:'linear-gradient(135deg,#1a1d2e,#2d3561)', borderRadius:16, padding:'18px 22px', marginBottom:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
+          <div>
+            <div style={{ fontSize:20, fontWeight:900, color:'white' }}>📅 إدارة الشفتات</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:3 }}>
+              {new Date().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
+            </div>
+          </div>
+          {openShift && (
+            <div style={{ background:'rgba(16,185,129,.15)', border:'1px solid rgba(16,185,129,.3)', borderRadius:12, padding:'8px 16px', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', animation:'pulse 1.5s infinite', display:'inline-block' }}/>
+              <span style={{ color:'#6ee7b7', fontWeight:800, fontSize:13 }}>الشفت {openShift.shift_type} مفتوح</span>
+              <span style={{ color:'rgba(255,255,255,.4)', fontSize:11 }}>منذ {fmtTime(openShift.opened_at)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Today's KPIs (open shift) */}
+      {openShift && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:16 }}>
+          <Kpi label="📦 طلبات الشفت" value={shiftOrders.length} color="#3b5bfe"/>
+          <Kpi label="✅ تسليم" value={shiftDelivered} color="#10b981"/>
+          <Kpi label="💰 إيرادات" value={fmt(shiftRevenue)} color="#ca8a04" sub="جنيه"/>
+          <Kpi label="⏱ مدة الشفت" value={Math.floor((Date.now()-new Date(openShift.opened_at))/60000)+'د'} color="#a855f7"/>
+        </div>
+      )}
+
+      {/* Open Shift Buttons */}
+      <Card neon>
+        <div style={{ fontWeight:800, marginBottom:14, color:'white' }}>🟢 فتح شفت جديد</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+          {[['صباحي','☀️ شفت صباحي','06:00 — 14:00',hasM],['مسائي','🌙 شفت مسائي','14:00 — 22:00',hasE]].map(([type,label,time,done]) => (
+            <div key={type} style={{ background:`${done?'rgba(107,114,128,.08)':'rgba(255,255,255,.04)'}`, border:`1px solid ${done?'rgba(107,114,128,.2)':`${SHIFT_COLOR[type]}44`}`, borderRadius:14, padding:16, textAlign:'center', opacity:done&&!openShift?.shift_type===type?.1:1 }}>
+              <div style={{ fontSize:28, marginBottom:6 }}>{type==='صباحي'?'☀️':'🌙'}</div>
+              <div style={{ fontSize:14, fontWeight:800, color:'white', marginBottom:3 }}>{label}</div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginBottom:12 }}>{time}</div>
+              {done
+                ? <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:8, background:'rgba(107,114,128,.2)', color:'#9ca3af' }}>✓ تم فتحه اليوم</span>
+                : openShift
+                  ? <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>أغلق الشفت الحالي أولاً</span>
+                  : <Btn onClick={() => setConf({ msg:`فتح شفت ${type}؟`, ok:()=>openNewShift(type) })} color={SHIFT_COLOR[type]} loading={opening}>{type==='صباحي'?'☀️':'🌙'} فتح الشفت</Btn>
+              }
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Close Shift */}
+      {openShift && (
+        <Card style={{ border:'1px solid rgba(239,68,68,.2)', background:'rgba(239,68,68,.05)' }}>
+          <div style={{ fontWeight:800, marginBottom:12, color:'#fca5a5' }}>🔴 إغلاق الشفت {openShift.shift_type}</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:14 }}>
+            {[['طلبات الشفت',shiftOrders.length],['مسلّم',shiftDelivered],['الإيرادات',fmt(shiftRevenue)+' ج']].map(([l,v])=>(
+              <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 12px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>{l}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <Fld label="ملاحظات ختامية (اختياري)">
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="أي ملاحظات عن الشفت..." rows={2}
+              style={{ width:'100%', padding:'9px 13px', background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, fontFamily:'inherit', direction:'rtl', resize:'none' }}/>
+          </Fld>
+          <Btn onClick={() => setConf({ msg:`إغلاق الشفت ${openShift.shift_type} وتسجيل الملخص؟`, ok:closeShift })} color="#ef4444" loading={closing}>
+            🔴 إغلاق الشفت وتسجيل الملخص
+          </Btn>
+        </Card>
+      )}
+
+      {/* Shifts History */}
+      <Card>
+        <SectionTitle>📋 سجل الشفتات ({shifts.length})</SectionTitle>
+        <Tbl cols={['التاريخ','الشفت','الفتح','الإغلاق','طلبات','تسليم','الإيرادات','الحالة','ملاحظات']} rows={
+          shifts.map(s => {
+            const sc_ = STATUS_C[s.status] || '#6b7280'
+            const sc2 = SHIFT_COLOR[s.shift_type] || '#6b7280'
+            const dur  = s.closed_at && s.opened_at ? Math.floor((new Date(s.closed_at)-new Date(s.opened_at))/60000) : null
+            return (
+              <Tr key={s.id}>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace", fontSize:11 }}>{fmtDate(s.date)}</Td>
+                <Td><span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:7, background:sc2+'22', color:sc2 }}>{s.shift_type==='صباحي'?'☀️':'🌙'} {s.shift_type}</span></Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace" }}>{fmtTime(s.opened_at)}</Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace" }}>{s.closed_at ? fmtTime(s.closed_at) : <span style={{ color:'rgba(255,255,255,.2)' }}>—</span>}</Td>
+                <Td style={{ textAlign:'center', fontWeight:700, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{s.orders_count||0}</Td>
+                <Td style={{ textAlign:'center', color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{s.delivered_count||0}</Td>
+                <Td style={{ fontWeight:700, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(s.revenue)||0} ج</Td>
+                <Td>
+                  <span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:7, background:sc_+'22', color:sc_ }}>
+                    {s.status==='open'?'🟢 مفتوح':'🔴 مغلق'}
+                  </span>
+                  {dur && <div style={{ fontSize:9, color:'rgba(255,255,255,.3)', marginTop:2 }}>{dur}د</div>}
+                </Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.35)', maxWidth:120 }}>{s.notes||'—'}</Td>
+              </Tr>
+            )
+          })
+        }/>
+      </Card>
+    </div>
+  )
+}
+
+
   const { orders, zones, settings } = data
   const now = new Date(); const today = now.toISOString().slice(0,10)
   const uMin = settings.unassignedAlert||15; const dSLA = settings.defaultSLA||40
@@ -2028,6 +2551,7 @@ export default function DeliverySystem() {
 
   const nc      = notifCount(data)
   const newOrd  = data.orders.filter(o => o.status === 'استُلم الطلب').length
+  const prepCnt = data.orders.filter(o => o.status === 'قيد التحضير').length
   const ua      = data.orders.filter(o => !o.driver_id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
   const allNav  = [...NAV, { id:'users', label:'المستخدمين', icon:'👥', group:'config' }]
   const props   = { data, refetch, user: DEFAULT_USER }
@@ -2035,18 +2559,21 @@ export default function DeliverySystem() {
 
   const renderPage = () => {
     switch (page) {
-      case 'home':      return <Home     {...props} setPage={setPage}/>
-      case 'orders':    return <Orders   {...props}/>
-      case 'analytics': return <Analytics data={data}/>
-      case 'drivers':   return <Drivers  {...props}/>
-      case 'zones':     return <Zones    {...props}/>
-      case 'vehicles':  return <Vehicles {...props}/>
-      case 'trips':     return <Trips    {...props}/>
-      case 'pricing':   return <Pricing  {...props}/>
-      case 'report':    return <Report   data={data}/>
-      case 'notifs':    return <Notifs   data={data}/>
-      case 'settings':  return <Settings data={data} refetch={refetch}/>
-      case 'users':     return <Users    data={data} refetch={refetch} currentUser={DEFAULT_USER}/>
+      case 'home':      return <Home          {...props} setPage={setPage}/>
+      case 'orders':    return <Orders        {...props}/>
+      case 'analytics': return <Analytics     data={data}/>
+      case 'prep':      return <PrepStation   data={data} refetch={refetch}/>
+      case 'tracking':  return <DeliveryTracker data={data} refetch={refetch}/>
+      case 'shifts':    return <DailyShifts   data={data} refetch={refetch}/>
+      case 'drivers':   return <Drivers       {...props}/>
+      case 'zones':     return <Zones         {...props}/>
+      case 'vehicles':  return <Vehicles      {...props}/>
+      case 'trips':     return <Trips         {...props}/>
+      case 'pricing':   return <Pricing       {...props}/>
+      case 'report':    return <Report        data={data}/>
+      case 'notifs':    return <Notifs        data={data}/>
+      case 'settings':  return <Settings      data={data} refetch={refetch}/>
+      case 'users':     return <Users         data={data} refetch={refetch} currentUser={DEFAULT_USER}/>
       default: return null
     }
   }
@@ -2098,7 +2625,7 @@ export default function DeliverySystem() {
                 {!sidebarCollapsed && <div style={{ fontSize:9, fontWeight:800, color:'rgba(255,255,255,.2)', padding:'6px 10px 3px', letterSpacing:1.5, textTransform:'uppercase' }}>{g.label}</div>}
                 {g.items.map(it => {
                   const active = page === it.id
-                  const badge  = it.id==='notifs'?nc:it.id==='orders'?newOrd:0
+                  const badge  = it.id==='notifs'?nc:it.id==='orders'?newOrd:it.id==='prep'?prepCnt:0
                   return (
                     <button key={it.id} onClick={() => setPage(it.id)} title={it.label}
                       className="sidebar-item"
