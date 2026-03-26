@@ -2876,234 +2876,41 @@ function DailyShifts({ data, refetch }) {
 }
 
 function notifCount(data) {
-  const { orders, zones, settings } = data
-  const now = new Date(); const today = now.toISOString().slice(0,10)
-  const uMin = settings.unassignedAlert||15; const dSLA = settings.defaultSLA||40
+  const { orders, zones, drivers = [], settings } = data
+  const now = new Date()
+  const today = now.toISOString().slice(0,10)
+  const uMin = settings.unassignedAlert || 15
+  const dSLA = settings.defaultSLA || 40
+
   let c = 0
+
   orders.forEach(o => {
-   if (!['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) {
+    if (!['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) {
       const age = Math.floor((now - new Date(o.created_at)) / 60000)
-      if (!o.driver_id && age >= uMin) notifs.push({ type:'error', ic:'⚠️', t:'طلب بدون مندوب', m:`${o.customer} — ${o.zone} — منذ ${age} دقيقة`, ts: age + ' د' })
+
+      if (!o.driver_id && age >= uMin) c++
+
       const z = zones.find(z => z.name === o.zone)
-      if (age > ((z?.pricing?.slaMinutes)||dSLA)) notifs.push({ type:'warn', ic:'🕐', t:'تجاوز SLA', m:`${o.customer} — ${age}د/${(z?.pricing?.slaMinutes)||dSLA}د`, ts: age + ' د' })
+      if (age > ((z?.pricing?.slaMinutes) || dSLA)) c++
     }
-    if (o.payment_method==='أجل' && o.due_date && o.due_date < today && o.status !== 'ملغي')
-      notifs.push({ type:'error', ic:'💳', t:'آجل متأخر', m:`${o.customer} — ${fmt(o.value)} ج`, ts: fmtDate(o.due_date) })
+
+    if (o.payment_method === 'أجل' && o.due_date && o.due_date < today && o.status !== 'ملغي') {
+      c++
+    }
   })
-  zones.forEach(z => { if (z.load==='ضغط عالي') notifs.push({ type:'warn', ic:'🗺️', t:'ضغط عالي', m:`${z.name} — ${z.orders} طلب`, ts:'الآن' }) })
-  const retCnt = orders.filter(o=>o.status==='مرتجع').length
-  if (retCnt > 0) notifs.push({ type:'info', ic:'↩️', t:'يوجد مرتجعات', m:`${retCnt} طلب يحتاج مراجعة`, ts:retCnt+'طلب' })
-  drivers.forEach(d => { if (d.status==='غير متاح') notifs.push({ type:'info', ic:'🏍', t:'مندوب غير متاح', m:`${d.name} — ${d.zone}`, ts: d.zone }) })
-  const TC = {
-    error:{ bg:'rgba(239,68,68,.1)',   bc:'rgba(239,68,68,.35)',  tc:'#fca5a5', l:'🔴 عاجل' },
-    warn: { bg:'rgba(245,158,11,.1)',  bc:'rgba(245,158,11,.35)', tc:'#fcd34d', l:'🟡 تحذير' },
-    info: { bg:'rgba(59,91,254,.1)',   bc:'rgba(59,91,254,.35)',  tc:'#7b9fff', l:'🔵 معلومة' },
-  }
-  return (
-    <div className="page-enter">
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:16 }}>
-        <Kpi label="🔔 الكل" value={notifs.length} color={notifs.length>0?'#ef4444':'#10b981'} urgent={notifs.filter(n=>n.type==='error').length>0}/>
-        <Kpi label="🔴 عاجل" value={notifs.filter(n=>n.type==='error').length} color="#ef4444"/>
-        <Kpi label="🟡 تحذير" value={notifs.filter(n=>n.type==='warn').length} color="#f59e0b"/>
-        <Kpi label="🔵 معلومة" value={notifs.filter(n=>n.type==='info').length} color="#3b5bfe"/>
-      </div>
-      {notifs.length === 0 && (
-        <Card><div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:64, marginBottom:12, animation:'float 3s ease infinite' }}>✅</div><div style={{ fontSize:18, fontWeight:800, color:'white' }}>كل حاجة تمام!</div><div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>لا توجد تنبيهات حالياً</div></div></Card>
-      )}
-      {['error','warn','info'].map(tp => {
-        const items = notifs.filter(n=>n.type===tp); if (!items.length) return null
-        const cfg   = TC[tp]
-        return (
-          <div key={tp} style={{ marginBottom:16 }}>
-            <div style={{ fontSize:13, fontWeight:800, color:cfg.tc, marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
-              {cfg.l} <span style={{ background:cfg.bc, color:cfg.tc, fontSize:11, padding:'1px 8px', borderRadius:10 }}>{items.length}</span>
-            </div>
-            {items.map((n,i) => (
-              <div key={i} style={{ background:cfg.bg, borderRight:`3px solid ${cfg.bc}`, borderRadius:11, padding:'12px 16px', marginBottom:8, display:'flex', alignItems:'flex-start', gap:12, animation:`fadeUp .3s ease ${i*.05}s both` }}>
-                <span style={{ fontSize:22, flexShrink:0 }}>{n.ic}</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:800, color:cfg.tc }}>{n.t}</div>
-                  <div style={{ fontSize:12, color:cfg.tc, opacity:.7, marginTop:2 }}>{n.m}</div>
-                </div>
-                <span style={{ fontSize:10, color:cfg.tc, opacity:.5, flexShrink:0 }}>{n.ts}</span>
-              </div>
-            ))}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
-// ══════════════════════════════════════════════════════
-//  SETTINGS
-// ══════════════════════════════════════════════════════
-function Settings({ data, refetch }) {
-  const s = data.settings || {}
-  const [cn, sCn]  = useState(s.companyName||'دليفري خليل الحلواني')
-  const [ua, sUa]  = useState(s.unassignedAlert||15)
-  const [sla,sSla] = useState(s.defaultSLA||40)
-  const [ok, sOk]  = useState(false)
-  const [saving, setSaving] = useState(false)
-  const save = async () => {
-    setSaving(true)
-    const { error } = await supabase.from('delivery_settings').upsert([{ id:1, companyName:cn, unassignedAlert:parseInt(ua)||15, defaultSLA:parseInt(sla)||40 }])
-    setSaving(false)
-    if (error) { toast.error('حصل خطأ: ' + error.message); return }
-    sOk(true); setTimeout(()=>sOk(false),2500); refetch(); toast.success('تم حفظ الإعدادات')
-  }
-  const exportData = () => {
-    const json = JSON.stringify(data, null, 2)
-    const blob = new Blob([json], { type:'application/json' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(a.href)
-    toast.success('تم تصدير النسخة الاحتياطية')
-  }
-  return (
-    <div className="page-enter" style={{ maxWidth:720 }}>
-      <Card neon>
-        <SectionTitle>🏢 إعدادات عامة</SectionTitle>
-        {ok && <div style={{ background:'rgba(16,185,129,.12)', color:'#6ee7b7', border:'1px solid rgba(16,185,129,.3)', borderRadius:9, padding:'9px 14px', fontSize:13, fontWeight:700, marginBottom:12, animation:'fadeUp .3s ease' }}>✅ تم الحفظ!</div>}
-        <Fld label="اسم الشركة"><Inp value={cn} onChange={sCn} prefix="🏢"/></Fld>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-          <Fld label="تنبيه بدون مندوب (دقيقة)"><Inp type="number" value={ua} onChange={sUa} suffix="د"/></Fld>
-          <Fld label="SLA الافتراضي (دقيقة)"><Inp type="number" value={sla} onChange={sSla} suffix="د"/></Fld>
-        </div>
-        <Btn onClick={save} color="#3b5bfe" loading={saving}>💾 حفظ الإعدادات</Btn>
-      </Card>
-      <Card>
-        <SectionTitle>💾 النسخ الاحتياطي</SectionTitle>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>
-          <div style={{ background:'rgba(59,91,254,.07)', borderRadius:12, padding:16, border:'1px solid rgba(59,91,254,.2)' }}>
-            <div style={{ fontWeight:800, color:'#7b9fff', marginBottom:6 }}>📤 تصدير</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginBottom:12 }}>حفظ كل البيانات في ملف JSON</div>
-            <Btn onClick={exportData} color="#3b5bfe" small>📥 تصدير Backup</Btn>
-          </div>
-          <div style={{ background:'rgba(16,185,129,.07)', borderRadius:12, padding:16, border:'1px solid rgba(16,185,129,.2)' }}>
-            <div style={{ fontWeight:800, color:'#6ee7b7', marginBottom:6 }}>📥 استيراد</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginBottom:12 }}>استعادة من ملف JSON</div>
-            <label style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700, background:'#10b981', color:'white' }}>
-              📤 استيراج <input type="file" accept=".json" onChange={e=>{ const file=e.target.files[0]; if(!file)return; const r=new FileReader(); r.onload=ev=>{ try{JSON.parse(ev.target.result); toast.success('تم الاستيراج — راجع البيانات'); refetch()}catch{toast.error('ملف غير صحيح')} }; r.readAsText(file) }} style={{ display:'none' }}/>
-            </label>
-          </div>
-        </div>
-      </Card>
-      <Card>
-        <SectionTitle>📊 إحصائيات قاعدة البيانات</SectionTitle>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-          {[['📦 طلبات',data.orders.length,'#3b5bfe'],['🏍 مندوبين',data.drivers.length,'#10b981'],['🗺 مناطق',data.zones.length,'#a855f7'],['🚗 مركبات',data.vehicles.length,'#f97316'],['🕐 رحلات',data.trips.length,'#6366f1'],['👥 مستخدمين',data.users.length,'#f59e0b']].map(([l,v,c])=>(
-            <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:10, padding:'10px 14px', border:`1px solid ${c}22` }}>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>{l}</div>
-              <div style={{ fontSize:22, fontWeight:900, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop:12, display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#10b981', fontWeight:700 }}>
-          <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', display:'inline-block', animation:'pulse 2s infinite' }}/>
-          مُتصل بـ Supabase — آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}
-        </div>
-      </Card>
-    </div>
-  )
-}
+  zones.forEach(z => {
+    if (z.load === 'ضغط عالي') c++
+  })
 
-// ══════════════════════════════════════════════════════
-//  USERS
-// ══════════════════════════════════════════════════════
-function Users({ data, refetch, currentUser }) {
-  const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
-  const { users } = data
-  const toggleActive = async (u) => {
-    if (u.id === currentUser.id) return
-    await supabase.from('delivery_users').update({ active:!u.active }).eq('id', u.id); refetch()
-    toast.info(`${u.name}: ${!u.active?'نشط':'موقوف'}`)
-  }
-  const deleteUser = async (id) => {
-    await supabase.from('delivery_users').delete().eq('id', id)
-    setConf(null); refetch(); toast.error('تم حذف المستخدم')
-  }
-  return (
-    <div className="page-enter">
-      {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
-      {modal && <Modal title={modal==='new'?'➕ مستخدم جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)} wide>
-        <UserForm user_={modal==='new'?null:modal} onClose={() => setModal(null)} refetch={refetch}/>
-      </Modal>}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:14 }}>
-        <Kpi label="👥 الكل" value={users.length} color="#3b5bfe"/>
-        {Object.entries(ROLES).map(([k,r]) => <Kpi key={k} label={r.label} value={users.filter(u=>u.role===k).length} color={r.color}/>)}
-      </div>
-      <div style={{ marginBottom:12 }}><Btn onClick={() => setModal('new')} color="#3b5bfe">➕ إضافة مستخدم</Btn></div>
-      <Card>
-        <Tbl cols={['الاسم','اسم المستخدم','الدور','الصلاحيات','الحالة','إجراء']} rows={
-          users.map(u => {
-            const r = ROLES[u.role] || {}; const perms = PERMS[u.role] || []
-            return (
-              <Tr key={u.id}>
-                <Td>
-                  <div style={{ display:'flex', alignItems:'center', gap:9 }}>
-                    <div style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${r.color||'#6b7280'},${r.color||'#6b7280'}88)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:14, boxShadow:`0 0 10px ${r.color||'#6b7280'}44` }}>{u.name?.charAt(0)}</div>
-                    <strong style={{ color:'white' }}>{u.name}</strong>
-                  </div>
-                </Td>
-                <Td style={{ color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{u.username}</Td>
-                <Td><span style={{ fontSize:12, fontWeight:700, padding:'3px 10px', borderRadius:8, background:(r.color||'#6b7280')+'22', color:r.color||'#6b7280' }}>{r.label||u.role}</span></Td>
-                <Td><span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{perms.includes('all') ? '✅ جميع الصلاحيات' : perms.length + ' صلاحية'}</span></Td>
-                <Td>
-                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <div onClick={() => toggleActive(u)} style={{ width:38, height:20, borderRadius:10, background:u.active?'#10b981':'rgba(255,255,255,.12)', position:'relative', cursor:'pointer', transition:'background .25s' }}>
-                      <div style={{ width:16, height:16, borderRadius:'50%', background:'white', position:'absolute', top:2, right:u.active?2:20, transition:'right .25s', boxShadow:'0 1px 3px rgba(0,0,0,.3)' }}/>
-                    </div>
-                    <span style={{ fontSize:11, fontWeight:700, color:u.active?'#10b981':'#6b7280' }}>{u.active?'نشط':'موقوف'}</span>
-                  </div>
-                </Td>
-                <Td>
-                  <div style={{ display:'flex', gap:5 }}>
-                    <Btn onClick={() => setModal(u)} small color="#6b7280">✏</Btn>
-                    <Btn onClick={() => setConf({ msg:`حذف ${u.name}؟`, ok:()=>deleteUser(u.id) })} small color="#ef4444">🗑</Btn>
-                  </div>
-                </Td>
-              </Tr>
-            )
-          })
-        }/>
-      </Card>
-    </div>
-  )
-}
+  const retCnt = orders.filter(o => o.status === 'مرتجع').length
+  if (retCnt > 0) c++
 
-function UserForm({ user_, onClose, refetch }) {
-  const [f, sF] = useState({ name:'', username:'', password:'', role:'dispatcher', ...user_ })
-  const [err, sE] = useState('')
-  const set = k => v => sF(p => ({ ...p, [k]:v }))
-  const save = async () => {
-    if (!f.name?.trim() || !f.username?.trim()) { sE('يجب ملء الاسم واسم المستخدم'); return }
-    if (!user_ && !f.password) { sE('يجب ملء كلمة المرور'); return }
-    const payload = { name:f.name.trim(), username:f.username.trim(), password:f.password||(user_?.password)||'', role:f.role||'dispatcher' }
-    let result
-    if (user_) {
-      result = await supabase.from('delivery_users').update(payload).eq('id', user_.id)
-    } else {
-      result = await supabase.from('delivery_users').insert([{ ...payload, active:true }])
-    }
-    if (result.error) { sE('❌ خطأ: ' + result.error.message); return }
-    toast.success(user_ ? 'تم تعديل المستخدم' : 'تم إضافة مستخدم')
-    onClose(); refetch()
-  }
-  return (
-    <div>
-      <Err msg={err}/>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-        <Fld label="الاسم الكامل" required><Inp value={f.name} onChange={set('name')} prefix="👤"/></Fld>
-        <Fld label="اسم المستخدم" required><Inp value={f.username} onChange={set('username')}/></Fld>
-        <Fld label={user_?'كلمة المرور (فارغة = بدون تغيير)':'كلمة المرور'} required={!user_}>
-          <Inp type="password" value={f.password||''} onChange={set('password')}/>
-        </Fld>
-        <Fld label="الدور">
-          <Sel value={f.role} onChange={set('role')} options={Object.entries(ROLES).map(([v,r])=>({v,l:r.label}))}/>
-        </Fld>
-      </div>
-      <div style={{ display:'flex', gap:10, marginTop:8 }}><Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn><Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn></div>
-    </div>
-  )
+  drivers.forEach(d => {
+    if (d.status === 'غير متاح') c++
+  })
+
+  return c
 }
 
 // ══════════════════════════════════════════════════════
