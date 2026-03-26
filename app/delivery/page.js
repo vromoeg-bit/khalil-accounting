@@ -370,8 +370,6 @@ const Card = ({ children, style: s = {}, glass, neon }) => (
 )
 
 function Modal({ open, onClose, title, children, footer, wide = false }) {
-  if (!open) return null;
-
   return (
     <div
       onClick={onClose}
