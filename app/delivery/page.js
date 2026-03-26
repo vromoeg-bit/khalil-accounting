@@ -545,10 +545,10 @@ function Modal({ title, onClose, children, footer, wide }) {
           border: '1px solid rgba(59,91,254,.25)',
           borderRadius: 18,
           width: wide ? 'min(860px, 95vw)' : 'min(520px, 95vw)',
-          maxHeight: '90vh',
+          maxHeight: '92vh',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
-          overflow: 'hidden',
+          overflow: 'visible',
         }}
       >
         <div style={{
@@ -573,7 +573,7 @@ function Modal({ title, onClose, children, footer, wide }) {
           >✕</button>
         </div>
 
-        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, maxHeight: 'calc(92vh - 120px)' }}>
           {children}
         </div>
 
