@@ -369,91 +369,94 @@ const Card = ({ children, style: s = {}, glass, neon }) => (
   <div style={{ background:glass?'rgba(255,255,255,.03)':'rgba(255,255,255,.04)', border:`1px solid ${neon?'rgba(59,91,254,.25)':'rgba(255,255,255,.07)'}`, borderRadius:14, padding:18, marginBottom:14, backdropFilter:glass?'blur(10px)':'none', boxShadow:neon?'0 0 20px rgba(59,91,254,.1)':'none', ...s }}>{children}</div>
 )
 
-const Modal = ({ title, onClose, children, wide, extra }) => {
-  if (typeof window === 'undefined') return null
+function Modal({ open, onClose, title, children, footer, wide = false }) {
+  if (!open) return null;
 
-  return createPortal(
+  return (
     <div
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={onClose}
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,.82)',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 999999,
-        padding: '20px',
-        backdropFilter: 'blur(4px)'
+        padding: 16,
+        zIndex: 9999,
       }}
     >
       <div
-        className="modal-enter"
+        onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#0d1018',
-          border: '1px solid rgba(255,255,255,.1)',
-          borderRadius: 18,
-          width: wide ? 'min(820px, 96vw)' : 'min(620px, 96vw)',
-          maxHeight: '92vh',
+          width: wide ? 'min(980px, 96vw)' : 'min(560px, 96vw)',
+          maxWidth: '96vw',
+          maxHeight: 'calc(100vh - 32px)',
+          background: '#fff',
+          borderRadius: 20,
+          boxShadow: '0 20px 70px rgba(0,0,0,.25)',
           overflow: 'hidden',
-          boxShadow: '0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(59,91,254,.15)',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
         }}
       >
         <div
           style={{
+            padding: '16px 20px',
+            borderBottom: '1px solid #eee',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '14px 20px',
-            borderBottom: '1px solid rgba(255,255,255,.07)',
-            background: '#0d1018',
-            flexShrink: 0
+            justifyContent: 'space-between',
+            gap: 12,
+            flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>
             {title}
-          </span>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {extra}
-            <button
-              onClick={onClose}
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 9,
-                border: 'none',
-                background: 'rgba(255,255,255,.07)',
-                cursor: 'pointer',
-                fontSize: 14,
-                color: 'rgba(255,255,255,.6)'
-              }}
-            >
-              ✕
-            </button>
           </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              fontSize: 24,
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
         </div>
 
         <div
           style={{
             padding: 20,
             overflowY: 'auto',
+            overflowX: 'auto',
             flex: 1,
-            minHeight: 0
           }}
         >
           {children}
         </div>
+
+        {footer ? (
+          <div
+            style={{
+              padding: 16,
+              borderTop: '1px solid #eee',
+              flexShrink: 0,
+              background: '#fff',
+            }}
+          >
+            {footer}
+          </div>
+        ) : null}
       </div>
-    </div>,
-    document.body
-  )
+    </div>
+  );
 }
+
 
 const Confirm = ({ msg, onOk, onCancel, danger = true }) => (
   <Modal title="تأكيد العملية" onClose={onCancel}>
