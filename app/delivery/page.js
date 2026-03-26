@@ -2,14 +2,19 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
+// ══════════════════════════════════════════════════════
+//  FONT INJECTION + GLOBAL KEYFRAMES
+// ══════════════════════════════════════════════════════
 const injectStyles = () => {
   if (document.getElementById('ds-global-styles')) return
   const s = document.createElement('style')
   s.id = 'ds-global-styles'
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body, input, select, textarea, button { font-family: 'Cairo', Tahoma, sans-serif !important; }
+
     @keyframes fadeUp   { from { opacity:0; transform:translateY(18px) } to { opacity:1; transform:translateY(0) } }
     @keyframes fadeIn   { from { opacity:0 } to { opacity:1 } }
     @keyframes slideIn  { from { opacity:0; transform:translateX(60px) } to { opacity:1; transform:translateX(0) } }
@@ -28,28 +33,36 @@ const injectStyles = () => {
     @keyframes shimmer  { from{background-position:-400px 0} to{background-position:400px 0} }
     @keyframes blink    { 0%,100%{opacity:1} 40%{opacity:0} }
     @keyframes zoomIn   { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+
     .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) both }
     .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both }
     .sidebar-item:hover { background: rgba(59,91,254,.18) !important; color: white !important; }
     .shimmer-bg { background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%); background-size:400px 100%; animation:shimmer 1.4s infinite linear; }
+
     ::-webkit-scrollbar { width:5px; height:5px }
     ::-webkit-scrollbar-track { background:transparent }
     ::-webkit-scrollbar-thumb { background:rgba(59,91,254,.35); border-radius:4px }
     ::-webkit-scrollbar-thumb:hover { background:rgba(59,91,254,.6) }
+
     select option { background:#0f1117 !important; color:white !important }
     input[type=number]::-webkit-inner-spin-button { opacity:.4 }
+
     .neon-border { box-shadow: 0 0 0 1px rgba(59,91,254,.3), 0 0 15px rgba(59,91,254,.1) }
     .urgent-pulse { animation: pulse 1.5s ease-in-out infinite }
     .float-anim  { animation: float 3s ease-in-out infinite }
     .glow-anim   { animation: glow 2.5s ease-in-out infinite }
+
     .tbl-row:hover td { background: rgba(59,91,254,.05) !important }
     .tbl-row { transition: all .15s }
+
     .btn-ripple { position:relative; overflow:hidden }
     .btn-ripple::after { content:''; position:absolute; border-radius:50%; background:rgba(255,255,255,.3); width:20px; height:20px; top:50%; left:50%; transform:scale(0); animation:none }
     .btn-ripple:active::after { animation:ripple .4s ease-out }
+
     .status-badge { transition: all .2s }
     .card-hover { transition: all .2s }
     .card-hover:hover { transform:translateY(-2px); border-color:rgba(59,91,254,.3) !important; box-shadow:0 8px 24px rgba(0,0,0,.3) }
+
     @media print {
       .no-print { display:none !important }
       body { background:white !important; color:black !important }
@@ -59,6 +72,9 @@ const injectStyles = () => {
   document.head.appendChild(s)
 }
 
+// ══════════════════════════════════════════════════════
+//  CONSTANTS
+// ══════════════════════════════════════════════════════
 const DEFAULT_USER = { id: 0, name: 'مدير النظام', role: 'admin', active: true }
 const ALL_STATUS = ['استُلم الطلب','قيد التحضير','جاهز للشحن','تم تعيين المندوب','في الطريق','تم التسليم','فشل التسليم','مرتجع','ملغي']
 const STATUS_FLOW = { 'استُلم الطلب':0,'قيد التحضير':1,'جاهز للشحن':2,'تم تعيين المندوب':3,'في الطريق':4,'تم التسليم':5,'فشل التسليم':5,'مرتجع':5,'ملغي':5 }
@@ -105,6 +121,9 @@ const NAV = [
   { id:'settings',  label:'الإعدادات',   icon:'⚙', group:'config' },
 ]
 
+// ══════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════
 const can  = (user, p) => { if (!user) return false; const ps = PERMS[user.role] || []; return ps.includes('all') || ps.includes(p) }
 const fmt  = n => parseFloat(n || 0).toLocaleString('ar-EG')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('ar-EG', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—'
@@ -141,6 +160,9 @@ const exportCSV = (rows, cols, filename) => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click()
 }
 
+// ══════════════════════════════════════════════════════
+//  TOAST SYSTEM
+// ══════════════════════════════════════════════════════
 const ToastContext = { _add: null }
 const TOAST_TYPES = {
   success: { bg:'rgba(16,185,129,.15)', bc:'rgba(16,185,129,.4)', c:'#6ee7b7', icon:'✅' },
@@ -177,6 +199,9 @@ function ToastProvider({ children }) {
 }
 const toast = { success:(m,d) => ToastContext._add?.(m,'success',d), error:(m,d) => ToastContext._add?.(m,'error',d), warn:(m,d) => ToastContext._add?.(m,'warn',d), info:(m,d) => ToastContext._add?.(m,'info',d) }
 
+// ══════════════════════════════════════════════════════
+//  ANIMATED COUNTER
+// ══════════════════════════════════════════════════════
 function AnimCounter({ value, suffix = '', color }) {
   const [display, setDisplay] = useState(0)
   const ref = useRef(null)
@@ -198,6 +223,9 @@ function AnimCounter({ value, suffix = '', color }) {
   return <span style={{ color, fontFamily:"'JetBrains Mono',monospace", fontVariantNumeric:'tabular-nums' }}>{formatted}{suffix}</span>
 }
 
+// ══════════════════════════════════════════════════════
+//  INLINE SPARKLINE
+// ══════════════════════════════════════════════════════
 function Sparkline({ data, color = '#3b5bfe', height = 32, width = 80 }) {
   if (!data || data.length < 2) return null
   const max = Math.max(...data, 1)
@@ -226,6 +254,9 @@ function Sparkline({ data, color = '#3b5bfe', height = 32, width = 80 }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  SVG BAR CHART
+// ══════════════════════════════════════════════════════
 function MiniBarChart({ data, color = '#3b5bfe', height = 48 }) {
   const max = Math.max(...data.map(d => d.v), 1)
   const w   = 100 / data.length
@@ -245,6 +276,9 @@ function MiniBarChart({ data, color = '#3b5bfe', height = 48 }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  DONUT CHART
+// ══════════════════════════════════════════════════════
 function DonutChart({ data, size = 100 }) {
   const total = data.reduce((s, d) => s + d.v, 0) || 1
   let offset  = 0
@@ -271,6 +305,9 @@ function DonutChart({ data, size = 100 }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  BASE COMPONENTS
+// ══════════════════════════════════════════════════════
 const Badge = ({ s }) => {
   const sc = SC[s] || { bg:'rgba(107,114,128,0.15)', c:'#d1d5db', d:'#9ca3af', icon:'●' }
   return (
@@ -323,9 +360,9 @@ const Card = ({ children, style: s = {}, glass, neon }) => (
 
 const Modal = ({ title, onClose, children, wide, extra }) => (
   <div onClick={e => e.target === e.currentTarget && onClose()}
-    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:12, backdropFilter:'blur(4px)', animation:'fadeIn .2s ease' }}>
-    <div className="modal-enter" style={{ background:'#0d1018', border:'1px solid rgba(255,255,255,.1)', borderRadius:18, width:wide?740:560, maxWidth:'98vw', maxHeight:'93vh', overflowY:'auto', boxShadow:'0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(59,91,254,.15)' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 20px', borderBottom:'1px solid rgba(255,255,255,.07)', position:'sticky', top:0, background:'#0d1018', zIndex:1, backdropFilter:'blur(10px)' }}>
+    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', display:'flex', alignItems:'flex-start', justifyContent:'center', zIndex:1000, padding:'16px 12px', backdropFilter:'blur(4px)', animation:'fadeIn .2s ease', overflowY:'auto' }}>
+    <div className="modal-enter" style={{ background:'#0d1018', border:'1px solid rgba(255,255,255,.1)', borderRadius:18, width:wide?740:560, maxWidth:'98vw', flexShrink:0, boxShadow:'0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(59,91,254,.15)', margin:'auto' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 20px', borderBottom:'1px solid rgba(255,255,255,.07)', position:'sticky', top:0, background:'#0d1018', zIndex:1, backdropFilter:'blur(10px)', borderRadius:'18px 18px 0 0' }}>
         <span style={{ fontSize:15, fontWeight:800, color:'white' }}>{title}</span>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           {extra}
@@ -392,7 +429,7 @@ const Tbl = ({ cols, rows, loading }) => (
   <div style={{ overflowX:'auto' }}>
     <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
       <thead>
-        <tr>{cols.map((c,i) => <th key={i} style={{ textAlign:'right', padding:'10px 12px', background:'rgba(255,255,255,.03)', color:'rgba(255,255,255,.4)', fontSize:11, fontWeight:700, whiteSpace:'nowrap', borderBottom:'1px solid rgba(255,255,255,.06)', letterSpacing:.5 }}>{c}</th>)}</tr>
+        <tr>{cols.map(c => <th key={c} style={{ textAlign:'right', padding:'10px 12px', background:'rgba(255,255,255,.03)', color:'rgba(255,255,255,.4)', fontSize:11, fontWeight:700, whiteSpace:'nowrap', borderBottom:'1px solid rgba(255,255,255,.06)', letterSpacing:.5 }}>{c}</th>)}</tr>
       </thead>
       <tbody>
         {loading ? Array(5).fill(0).map((_,i) => (
@@ -432,6 +469,9 @@ const Checkbox = ({ checked, onChange }) => (
   </div>
 )
 
+// ══════════════════════════════════════════════════════
+//  DATA HOOK
+// ══════════════════════════════════════════════════════
 function useData() {
   const [data, setData] = useState({ orders:[], drivers:[], zones:[], vehicles:[], trips:[], users:[], settings:{}, shifts:[] })
   const [loading, setLoading] = useState(true)
@@ -446,7 +486,7 @@ function useData() {
       supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
       supabase.from('delivery_users').select('*'),
       supabase.from('delivery_settings').select('*').single(),
-      supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(60),
+      supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
     ])
     setData({
       orders:   ord.data  || [],
@@ -462,6 +502,7 @@ function useData() {
     setLoading(false)
   }, [])
   useEffect(() => { fetchAll() }, [fetchAll])
+  // auto-refresh every 60s
   useEffect(() => {
     const t = setInterval(fetchAll, 60000)
     return () => clearInterval(t)
@@ -469,6 +510,9 @@ function useData() {
   return { data, loading, refetch: fetchAll, lastUpdate }
 }
 
+// ══════════════════════════════════════════════════════
+//  PRODUCTS TABLE
+// ══════════════════════════════════════════════════════
 function ProductsTable({ products, onChange }) {
   const add    = () => onChange([...products, { name:'', qty:1, price:0 }])
   const remove = (i) => onChange(products.filter((_, idx) => idx !== i))
@@ -507,6 +551,9 @@ function ProductsTable({ products, onChange }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  ORDER TIMELINE
+// ══════════════════════════════════════════════════════
 function OrderTimeline({ order }) {
   const done   = STATUS_FLOW[order.status] ?? 0
   const failed = ['فشل التسليم','مرتجع','ملغي'].includes(order.status)
@@ -548,9 +595,13 @@ function OrderTimeline({ order }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  INVOICE MODAL
+// ══════════════════════════════════════════════════════
 function InvoiceModal({ order, onClose }) {
   const prods  = parseProducts(order.products)
   const total  = prods.reduce((s,p) => s + (parseFloat(p.qty)||0)*(parseFloat(p.price)||0), 0)
+  const sc     = SC[order.status] || {}
   return (
     <Modal title="🧾 فاتورة الطلب" onClose={onClose} extra={<Btn onClick={() => window.print()} small color="#10b981">🖨 طباعة</Btn>}>
       <div className="print-area" style={{ direction:'rtl' }}>
@@ -604,6 +655,9 @@ function InvoiceModal({ order, onClose }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  HOME PAGE
+// ══════════════════════════════════════════════════════
 function Home({ data, setPage }) {
   const { orders, drivers, settings } = data
   const delivered  = orders.filter(o => o.status === 'تم التسليم')
@@ -616,14 +670,19 @@ function Home({ data, setPage }) {
   const delivRate  = orders.length ? Math.round(delivered.length/orders.length*100) : 0
   const pc = settings.primaryColor || '#1a1d2e'
   const ac = settings.accentColor  || '#c9a227'
+
+  // Last 7 days order data (simulate from actual orders)
   const last7 = Array(7).fill(0).map((_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6 - i))
     const ds = d.toISOString().slice(0,10)
     return orders.filter(o => o.created_at?.slice(0,10) === ds).length
   })
+
   return (
     <div className="page-enter">
+      {/* HERO BANNER */}
       <div style={{ background:`linear-gradient(135deg, ${pc} 0%, #2d3561 50%, #1a1d3a 100%)`, borderRadius:18, padding:'22px 26px', color:'white', marginBottom:18, position:'relative', overflow:'hidden' }}>
+        {/* Decorative circles */}
         <div style={{ position:'absolute', top:-30, left:-30, width:180, height:180, borderRadius:'50%', background:'rgba(255,255,255,.03)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:-40, left:80, width:140, height:140, borderRadius:'50%', background:`rgba(201,162,39,.07)`, pointerEvents:'none' }}/>
         <div style={{ position:'relative', display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16 }}>
@@ -644,6 +703,8 @@ function Home({ data, setPage }) {
           </div>
         </div>
       </div>
+
+      {/* ALERTS */}
       {unassigned.length > 0 && (
         <div onClick={() => setPage('orders')} className="urgent-pulse" style={{ background:'rgba(249,115,22,.1)', border:'1px solid rgba(249,115,22,.35)', borderRadius:12, padding:'12px 18px', marginBottom:12, display:'flex', alignItems:'center', gap:12, cursor:'pointer', transition:'background .2s' }}
           onMouseEnter={e=>e.currentTarget.style.background='rgba(249,115,22,.18)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(249,115,22,.1)'}>
@@ -655,6 +716,8 @@ function Home({ data, setPage }) {
           <span style={{ marginRight:'auto', color:'#f97316', fontSize:18 }}>←</span>
         </div>
       )}
+
+      {/* KPI GRID */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:18 }}>
         <Kpi label="📦 إجمالي الطلبات" value={orders.length} color="#3b5bfe" sparkData={last7} onClick={() => setPage('orders')}/>
         <Kpi label="✅ تم التسليم" value={delivRate+'%'} color="#10b981" sub={`${delivered.length} من ${orders.length}`}/>
@@ -663,7 +726,10 @@ function Home({ data, setPage }) {
         <Kpi label="🚚 رسوم التوصيل" value={fmt(feeRev)} color="#3b82f6" sub="جنيه مصري"/>
         <Kpi label="↩ مرتجع + ملغي" value={returned.length + cancelled.length} color="#f59e0b"/>
       </div>
+
+      {/* CHARTS ROW */}
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:14, marginBottom:14 }}>
+        {/* Status Distribution */}
         <Card>
           <SectionTitle>📦 توزيع حالات الطلبات</SectionTitle>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -684,6 +750,8 @@ function Home({ data, setPage }) {
             })}
           </div>
         </Card>
+
+        {/* Payment + Drivers */}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <Card style={{ flex:'0 0 auto' }}>
             <SectionTitle>💳 التحصيل</SectionTitle>
@@ -721,6 +789,8 @@ function Home({ data, setPage }) {
           </Card>
         </div>
       </div>
+
+      {/* RECENT ORDERS TABLE */}
       <Card>
         <SectionTitle>🕐 آخر الطلبات<span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>({Math.min(orders.length,8)})</span>
           <Btn onClick={() => setPage('orders')} small color="rgba(59,91,254,.3)" style={{ fontSize:10 }}>عرض الكل ←</Btn>
@@ -742,6 +812,9 @@ function Home({ data, setPage }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  ORDERS PAGE
+// ══════════════════════════════════════════════════════
 function Orders({ data, refetch, user }) {
   const [srch,    setSrch]   = useState('')
   const [fSt,     setFSt]    = useState('')
@@ -795,6 +868,8 @@ function Orders({ data, refetch, user }) {
       {conf    && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
       {modal   && <OrderModal data={data} order={modal === 'new' ? null : modal} onClose={() => setModal(null)} refetch={refetch}/>}
       {invoice && <InvoiceModal order={invoice} onClose={() => setInvoice(null)}/>}
+
+      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:14 }}>
         <Kpi label="📦 الكل" value={orders.length} color="#3b5bfe"/>
         <Kpi label="✅ تسليم" value={orders.filter(o=>o.status==='تم التسليم').length} color="#10b981"/>
@@ -803,8 +878,12 @@ function Orders({ data, refetch, user }) {
         <Kpi label="↩ مرتجع" value={orders.filter(o=>o.status==='مرتجع').length} color="#f59e0b"/>
         <Kpi label="❌ ملغاة" value={orders.filter(o=>o.status==='ملغي').length} color="#ef4444"/>
       </div>
+
+      {/* ALERTS */}
       {unassigned.length > 0 && <div className="urgent-pulse" style={{ background:'rgba(249,115,22,.1)', border:'1px solid rgba(249,115,22,.3)', borderRadius:11, padding:'10px 16px', display:'flex', alignItems:'center', gap:9, marginBottom:10 }}>⚠️ <strong style={{ color:'#f97316' }}>{unassigned.length} طلب بدون مندوب!</strong></div>}
       {overdue.length   > 0 && <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.3)', borderRadius:11, padding:'9px 16px', marginBottom:10 }}>💳 <strong style={{ color:'#f59e0b' }}>{overdue.length} مدفوعات آجلة متأخرة!</strong></div>}
+
+      {/* TOOLBAR */}
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:12, background:'rgba(255,255,255,.03)', padding:'10px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,.06)' }}>
         {can(user,'orders_w') && <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ طلب جديد</Btn>}
         <Btn onClick={exportOrders} color="#10b981" small title="تصدير CSV">📥 CSV</Btn>
@@ -821,6 +900,8 @@ function Orders({ data, refetch, user }) {
         </select>
         <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>{list.length} نتيجة</span>
       </div>
+
+      {/* BULK ACTIONS */}
       {showBulk && (
         <div style={{ background:'rgba(168,85,247,.08)', border:'1px solid rgba(168,85,247,.25)', borderRadius:12, padding:'12px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', animation:'fadeUp .3s ease' }}>
           <span style={{ color:'#d8b4fe', fontWeight:700, fontSize:13 }}>⚡ {selected.length} طلب محدد</span>
@@ -830,6 +911,7 @@ function Orders({ data, refetch, user }) {
           <Btn onClick={() => { setSel([]); setShowBulk(false) }} color="rgba(255,255,255,.1)" small>إلغاء</Btn>
         </div>
       )}
+
       <Card>
         <Tbl cols={[
           <Checkbox key="all" checked={allSelected} onChange={toggleAll}/>,
@@ -899,6 +981,9 @@ function Orders({ data, refetch, user }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  ORDER MODAL
+// ══════════════════════════════════════════════════════
 function OrderModal({ data, order, onClose, refetch }) {
   const def = { customer:'', phone:'', address:'', zone:'', value:'', products:[], status:'استُلم الطلب', driver_id:'', notes:'', customer_type:'عميل', payment_method:'كاش', due_date:'', no_fee:false, fail_reason:'', cancel_reason:'', return_reason:'' }
   const [f, sF] = useState({ ...def, ...(order||{}), products: parseProducts(order?.products) })
@@ -942,19 +1027,23 @@ function OrderModal({ data, order, onClose, refetch }) {
         <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={ALL_STATUS.map(v=>({v,l:`${SC[v]?.icon||''} ${v}`}))}/></Fld>
         <Fld label="المندوب"><Sel value={f.driver_id||''} onChange={set('driver_id')} options={[{v:'',l:'بدون تعيين'}, ...data.drivers.map(d=>({v:d.id,l:`${d.name} (${d.zone})`}))]}/></Fld>
       </div>
+
       <div onClick={() => set('no_fee')(!f.no_fee)} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', background:'rgba(255,255,255,.04)', borderRadius:10, marginBottom:12, cursor:'pointer', marginTop:4, transition:'background .15s' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}>
         <Checkbox checked={f.no_fee} onChange={() => set('no_fee')(!f.no_fee)}/>
         <span style={{ fontSize:13, fontWeight:600, color:'white' }}>بدون رسوم دليفري</span>
       </div>
+
       {f.zone && !f.no_fee && (
         <div style={{ background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.2)', borderRadius:9, padding:'9px 14px', marginBottom:12, fontSize:13, color:'#93c5fd', display:'flex', justifyContent:'space-between' }}>
           <span>💰 رسوم التوصيل المحسوبة:</span>
           <strong>{fee === 0 ? 'مجاني 🎉' : `${fee} ج`}</strong>
         </div>
       )}
+
       <div style={{ marginBottom:14, padding:14, background:'rgba(255,255,255,.02)', border:'1px solid rgba(255,255,255,.07)', borderRadius:12 }}>
         <ProductsTable products={f.products} onChange={set('products')}/>
       </div>
+
       {f.status === 'فشل التسليم' && <Fld label="سبب الفشل"><Inp value={f.fail_reason} onChange={set('fail_reason')}/></Fld>}
       {f.status === 'ملغي'        && <Fld label="سبب الإلغاء"><Inp value={f.cancel_reason} onChange={set('cancel_reason')}/></Fld>}
       {f.status === 'مرتجع'       && <Fld label="سبب المرتجع"><Inp value={f.return_reason} onChange={set('return_reason')}/></Fld>}
@@ -969,12 +1058,19 @@ function OrderModal({ data, order, onClose, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  ANALYTICS PAGE  (NEW)
+// ══════════════════════════════════════════════════════
 function Analytics({ data }) {
   const { orders, drivers, zones } = data
   const delivered = orders.filter(o => o.status === 'تم التسليم')
   const returned  = orders.filter(o => o.status === 'مرتجع')
   const revenue   = delivered.reduce((s,o) => s+parseFloat(o.value||0),0)
+
+  // Orders by zone
   const byZone = zones.map(z => ({ l:z.name.slice(0,6), v:orders.filter(o=>o.zone===z.name).length, color:z.color||'#3b5bfe' })).sort((a,b)=>b.v-a.v).slice(0,8)
+
+  // Last 14 days
   const last14 = Array(14).fill(0).map((_,i) => {
     const d = new Date(); d.setDate(d.getDate()-(13-i))
     return orders.filter(o=>o.created_at?.slice(0,10)===d.toISOString().slice(0,10)).length
@@ -983,13 +1079,16 @@ function Analytics({ data }) {
     const d = new Date(); d.setDate(d.getDate()-(13-i))
     return orders.filter(o=>o.created_at?.slice(0,10)===d.toISOString().slice(0,10)&&o.status==='تم التسليم').reduce((s,o)=>s+parseFloat(o.value||0),0)
   })
+
   const topDrivers = [...drivers].sort((a,b)=>b.delivered-a.delivered).slice(0,5)
   const failRate   = orders.length ? Math.round(orders.filter(o=>o.status==='فشل التسليم').length/orders.length*100) : 0
   const retRate    = orders.length ? Math.round(returned.length/orders.length*100) : 0
   const avgVal     = delivered.length ? Math.round(revenue/delivered.length) : 0
+
   return (
     <div className="page-enter">
       <SectionTitle>📈 التحليلات والإحصائيات</SectionTitle>
+
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:18 }}>
         <Kpi label="💰 متوسط قيمة الطلب" value={avgVal} color="#ca8a04" sub="جنيه"/>
         <Kpi label="📊 معدل التسليم" value={delivered.length?Math.round(delivered.length/orders.length*100):0} color="#10b981" sub="بالمئة"/>
@@ -998,19 +1097,25 @@ function Analytics({ data }) {
         <Kpi label="🏍 متوسط طلبات/سائق" value={drivers.length?Math.round(orders.length/drivers.length):0} color="#3b5bfe"/>
         <Kpi label="⭐ متوسط التقييم" value={(drivers.reduce((a,b)=>a+(b.rating||0),0)/Math.max(drivers.length,1)).toFixed(1)} color="#f59e0b"/>
       </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'3fr 2fr', gap:14, marginBottom:14 }}>
         <Card neon>
           <div style={{ fontWeight:800, marginBottom:14, color:'white', display:'flex', justifyContent:'space-between' }}>
             <span>📊 الطلبات — آخر 14 يوم</span>
             <Sparkline data={last14} color="#3b5bfe" width={60} height={24}/>
           </div>
-          <div style={{ height:64 }}><MiniBarChart data={last14.map((v,i)=>({ v, l: i%2===0?'':`${i+1}` }))} color="#3b5bfe" height={64}/></div>
+          <div style={{ height:64 }}>
+            <MiniBarChart data={last14.map((v,i)=>({ v, l: i%2===0?'':`${i+1}` }))} color="#3b5bfe" height={64}/>
+          </div>
         </Card>
         <Card neon>
           <div style={{ fontWeight:800, marginBottom:14, color:'white' }}>🗺 الطلبات بالمنطقة</div>
-          <div style={{ height:64 }}><MiniBarChart data={byZone} height={64}/></div>
+          <div style={{ height:64 }}>
+            <MiniBarChart data={byZone} height={64}/>
+          </div>
         </Card>
       </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>🏆 أفضل المندوبين</SectionTitle>
@@ -1043,9 +1148,12 @@ function Analytics({ data }) {
           })}
         </Card>
       </div>
+
       <Card>
         <SectionTitle>📈 الإيرادات — آخر 14 يوم</SectionTitle>
-        <div style={{ height:60 }}><MiniBarChart data={last14rev.map((v,i)=>({ v, l:i%3===0?`${i+1}`:'' }))} color="#ca8a04" height={60}/></div>
+        <div style={{ height:60 }}>
+          <MiniBarChart data={last14rev.map((v,i)=>({ v, l:i%3===0?`${i+1}`:'' }))} color="#ca8a04" height={60}/>
+        </div>
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:8, fontSize:12, color:'rgba(255,255,255,.4)' }}>
           <span>أقل: {fmt(Math.min(...last14rev.filter(v=>v>0)||[0]))} ج</span>
           <span>أعلى: {fmt(Math.max(...last14rev||[0]))} ج</span>
@@ -1056,18 +1164,24 @@ function Analytics({ data }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  DRIVERS PAGE
+// ══════════════════════════════════════════════════════
 function Drivers({ data, refetch, user }) {
   const [modal, setModal] = useState(null)
   const [conf,  setConf]  = useState(null)
   const { drivers } = data
+
   const updateStatus = async (id, status) => { await supabase.from('delivery_drivers').update({ status }).eq('id', id); refetch(); toast.info('تم تحديث حالة المندوب') }
   const deleteDriver = async (id) => { await supabase.from('delivery_drivers').delete().eq('id', id); setConf(null); refetch(); toast.error('تم حذف المندوب') }
+
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
       {modal && <Modal title={modal==='new'?'➕ مندوب جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)}>
         <DriverForm data={data} driver={modal==='new'?null:modal} onClose={() => setModal(null)} refetch={refetch}/>
       </Modal>}
+
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:14 }}>
         <Kpi label="👥 الكل" value={drivers.length} color="#3b5bfe"/>
         <Kpi label="🟢 شغّالين" value={drivers.filter(d=>d.status==='شغال').length} color="#10b981"/>
@@ -1075,13 +1189,18 @@ function Drivers({ data, refetch, user }) {
         <Kpi label="🔴 غير متاح" value={drivers.filter(d=>d.status==='غير متاح').length} color="#ef4444"/>
         <Kpi label="⭐ تقييم متوسط" value={(drivers.reduce((a,b)=>a+(b.rating||0),0)/Math.max(drivers.length,1)).toFixed(1)} color="#f59e0b"/>
       </div>
+
       <div style={{ marginBottom:12 }}><Btn onClick={() => setModal('new')} color="#3b5bfe">➕ إضافة مندوب</Btn></div>
+
+      {/* Driver Cards Grid */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
         {drivers.map(d => {
           const veh   = data.vehicles.find(v => v.id === d.vehicle_id)
           const sc_   = d.status==='شغال'?'#10b981':d.status==='استراحة'?'#f59e0b':'#ef4444'
+          const drOrders = data.orders.filter(o => o.driver_id === d.id)
           return (
             <div key={d.id} className="card-hover" style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:16, overflow:'hidden' }}>
+              {/* Header */}
               <div style={{ background:`linear-gradient(135deg,${sc_}22,${sc_}0a)`, padding:'14px 16px', borderBottom:'1px solid rgba(255,255,255,.06)', display:'flex', alignItems:'center', gap:12 }}>
                 <div style={{ width:44, height:44, borderRadius:'50%', background:`linear-gradient(135deg,#3b5bfe,#6366f1)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:16, fontWeight:800, flexShrink:0, boxShadow:`0 0 12px #3b5bfe55` }}>{d.name?.charAt(0)}</div>
                 <div style={{ flex:1 }}>
@@ -1092,6 +1211,7 @@ function Drivers({ data, refetch, user }) {
                   {['شغال','استراحة','غير متاح'].map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
+              {/* Stats */}
               <div style={{ padding:'12px 16px' }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
                   {[[d.orders||0,'طلب','white'],[d.delivered||0,'تسليم','#10b981'],[d.on_time_rate||0+'%','التزام',d.on_time_rate>85?'#10b981':'#f59e0b'],[fmt(d.earnings),'أرباح ج','#fcd34d']].map(([v,l,c])=>(
@@ -1114,6 +1234,7 @@ function Drivers({ data, refetch, user }) {
                   <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>{veh?`${veh.icon} ${veh.name}`:'—'}</div>
                 </div>
               </div>
+              {/* Actions */}
               <div style={{ padding:'8px 16px', borderTop:'1px solid rgba(255,255,255,.06)', display:'flex', gap:6, justifyContent:'flex-end' }}>
                 <Btn onClick={() => setModal(d)} small color="#6b7280">✏ تعديل</Btn>
                 <Btn onClick={() => setConf({ msg:`حذف ${d.name}؟`, ok:() => deleteDriver(d.id) })} small color="#ef4444">🗑</Btn>
@@ -1155,6 +1276,9 @@ function DriverForm({ data, driver, onClose, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  ZONES PAGE
+// ══════════════════════════════════════════════════════
 function Zones({ data, refetch }) {
   const [modal, setModal] = useState(null)
   const [conf,  setConf]  = useState(null)
@@ -1274,6 +1398,9 @@ function ZoneModal({ zone, onClose, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  VEHICLES
+// ══════════════════════════════════════════════════════
 function Vehicles({ data, refetch }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { vehicles } = data
@@ -1338,6 +1465,9 @@ function VehicleForm({ veh, onClose, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  TRIPS
+// ══════════════════════════════════════════════════════
 function Trips({ data, refetch }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { trips } = data
@@ -1355,10 +1485,11 @@ function Trips({ data, refetch }) {
         <Kpi label="🟢 نشطة" value={trips.filter(t=>t.status==='نشطة').length} color="#10b981"/>
         <Kpi label="✅ مكتملة" value={trips.filter(t=>t.status==='مكتملة').length} color="#6366f1"/>
         <Kpi label="⏳ معلقة" value={trips.filter(t=>t.status==='معلقة').length} color="#f59e0b"/>
+        <Kpi label="🚗 خارجية" value={trips.filter(t=>t.is_external).length} color="#a855f7"/>
       </div>
       <div style={{ marginBottom:12 }}><Btn onClick={() => setModal('new')} color="#3b5bfe">➕ رحلة جديدة</Btn></div>
       <Card>
-        <Tbl cols={['#','المندوب','المنطقة','الموجة','المسافة','الوقت','الحالة','إجراء']} rows={
+        <Tbl cols={['#','المندوب','المنطقة','الموجة','النوع','المسافة','الوقت','الحالة','إجراء']} rows={
           trips.map(t => {
             const drv  = data.drivers.find(d => d.id === t.driver_id)
             const zone = data.zones.find(z => z.id === t.zone_id)
@@ -1369,6 +1500,15 @@ function Trips({ data, refetch }) {
                 <Td style={{ fontWeight:600, color:'white' }}>{drv?drv.name:'—'}</Td>
                 <Td style={{ color:'rgba(255,255,255,.6)' }}>{zone?zone.name:'—'}</Td>
                 <Td><span style={{ fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:6, background:'rgba(59,91,254,.15)', color:'#7b9fff' }}>{t.wave}</span></Td>
+                <Td>
+                  {t.is_external
+                    ? <div>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'rgba(168,85,247,.2)', color:'#d8b4fe' }}>🚗 خارجي</span>
+                        {t.external_cost > 0 && <div style={{ fontSize:10, color:'#fcd34d', marginTop:2, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(t.external_cost)} ج</div>}
+                      </div>
+                    : <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,.05)' }}>عادي</span>
+                  }
+                </Td>
                 <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.distance||'—'} كم</Td>
                 <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.time_mins||'—'} د</Td>
                 <Td>
@@ -1392,11 +1532,11 @@ function Trips({ data, refetch }) {
 }
 
 function TripForm({ data, trip, onClose, refetch }) {
-  const [f, sF] = useState({ driver_id:'', zone_id:'', wave:'الموجة ١', status:'معلقة', distance:0, time_mins:0, ...trip })
+  const [f, sF] = useState({ driver_id:'', zone_id:'', wave:'الموجة ١', status:'معلقة', distance:0, time_mins:0, is_external:false, external_notes:'', external_cost:0, ...trip })
   const set = k => v => sF(p => ({ ...p, [k]:v }))
   const save = async () => {
     if (!f.driver_id || !f.zone_id) { toast.error('اختر مندوب ومنطقة'); return }
-    const payload = { ...f, driver_id:parseInt(f.driver_id), zone_id:parseInt(f.zone_id), distance:parseFloat(f.distance)||0, time_mins:parseInt(f.time_mins)||0 }
+    const payload = { ...f, driver_id:parseInt(f.driver_id), zone_id:parseInt(f.zone_id), distance:parseFloat(f.distance)||0, time_mins:parseInt(f.time_mins)||0, is_external:f.is_external||false, external_cost:parseFloat(f.external_cost)||0, external_notes:f.external_notes||'' }
     if (trip) await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
     else      await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
     toast.success('تم الحفظ'); onClose(); refetch()
@@ -1411,11 +1551,28 @@ function TripForm({ data, trip, onClose, refetch }) {
         <Fld label="المسافة (كم)"><Inp type="number" value={f.distance} onChange={set('distance')} suffix="كم"/></Fld>
         <Fld label="الوقت (دقيقة)"><Inp type="number" value={f.time_mins} onChange={set('time_mins')} suffix="د"/></Fld>
       </div>
-      <div style={{ display:'flex', gap:10, marginTop:8 }}><Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn><Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn></div>
+      {/* External Trip Toggle */}
+      <div onClick={() => set('is_external')(!f.is_external)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:f.is_external?'rgba(168,85,247,.1)':'rgba(255,255,255,.04)', border:`1px solid ${f.is_external?'rgba(168,85,247,.3)':'rgba(255,255,255,.08)'}`, borderRadius:10, marginBottom:f.is_external?10:16, cursor:'pointer', transition:'all .2s' }}>
+        <Checkbox checked={f.is_external} onChange={() => set('is_external')(!f.is_external)}/>
+        <span style={{ fontSize:13, fontWeight:700, color:f.is_external?'#d8b4fe':'rgba(255,255,255,.7)' }}>🚗 مشوار خارجي</span>
+        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>مشوار خارج نطاق التوصيل المعتاد</span>
+      </div>
+      {f.is_external && (
+        <div style={{ background:'rgba(168,85,247,.07)', border:'1px solid rgba(168,85,247,.2)', borderRadius:10, padding:14, marginBottom:14, animation:'fadeUp .2s ease' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <Fld label="تكلفة المشوار (ج)"><Inp type="number" value={f.external_cost} onChange={set('external_cost')} suffix="ج" prefix="💰"/></Fld>
+            <Fld label="ملاحظات المشوار"><Inp value={f.external_notes} onChange={set('external_notes')} placeholder="وجهة المشوار أو سببه..."/></Fld>
+          </div>
+        </div>
+      )}
+      <div style={{ display:'flex', gap:10 }}><Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn><Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn></div>
     </div>
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  PRICING
+// ══════════════════════════════════════════════════════
 function Pricing({ data, refetch, user }) {
   const [modal, setModal] = useState(null)
   return (
@@ -1465,8 +1622,11 @@ function Pricing({ data, refetch, user }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  REPORT
+// ══════════════════════════════════════════════════════
 function Report({ data }) {
-  const { orders, drivers } = data
+  const { orders, drivers, trips } = data
   const today     = new Date().toISOString().slice(0,10)
   const delivered  = orders.filter(o=>o.status==='تم التسليم')
   const returned   = orders.filter(o=>o.status==='مرتجع')
@@ -1474,6 +1634,14 @@ function Report({ data }) {
   const revenue    = delivered.reduce((s,o)=>s+parseFloat(o.value||0),0)
   const feeRev     = orders.reduce((s,o)=>s+parseFloat(o.delivery_fee||0),0)
   const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.due_date<today&&o.status!=='ملغي')
+
+  // External trips
+  const extTrips       = (trips||[]).filter(t => t.is_external)
+  const extTotalCost   = extTrips.reduce((s,t) => s+parseFloat(t.external_cost||0), 0)
+  const extTotalDist   = extTrips.reduce((s,t) => s+parseFloat(t.distance||0), 0)
+  const extCompleted   = extTrips.filter(t => t.status === 'مكتملة')
+  const [showExtDetail, setShowExtDetail] = useState(false)
+
   const exportRep  = () => {
     exportCSV(
       drivers.map(d=>[d.name,d.zone,d.orders,d.delivered,d.on_time_rate+'%',d.rating,fmt(d.earnings)+' ج']),
@@ -1482,6 +1650,18 @@ function Report({ data }) {
     )
     toast.success('تم تصدير التقرير')
   }
+  const exportExtTrips = () => {
+    exportCSV(
+      extTrips.map(t => {
+        const drv = drivers.find(d => d.id === t.driver_id)
+        return [drv?.name||'—', t.external_notes||'—', t.distance||0, t.time_mins||0, t.external_cost||0, t.status, fmtDate(t.created_at)]
+      }),
+      ['المندوب','الوصف/الوجهة','المسافة كم','الوقت د','التكلفة ج','الحالة','التاريخ'],
+      `external_trips_${today}.csv`
+    )
+    toast.success('تم تصدير المشاوير الخارجية')
+  }
+
   return (
     <div className="page-enter">
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
@@ -1491,6 +1671,8 @@ function Report({ data }) {
           <Btn onClick={() => window.print()} color="#3b5bfe" small>🖨 طباعة</Btn>
         </div>
       </div>
+
+      {/* Main KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
         <Kpi label="📦 إجمالي" value={orders.length} color="#3b5bfe"/>
         <Kpi label="✅ تسليم" value={`${delivered.length} (${orders.length?Math.round(delivered.length/orders.length*100):0}%)`} color="#10b981"/>
@@ -1501,6 +1683,98 @@ function Report({ data }) {
         <Kpi label="⚠ آجل متأخر" value={overdue.length} color={overdue.length>0?'#ef4444':'#6b7280'} urgent={overdue.length>0}/>
         <Kpi label="📊 معدل النجاح" value={(orders.length?Math.round(delivered.length/orders.length*100):0)+'%'} color="#10b981"/>
       </div>
+
+      {/* ══ EXTERNAL TRIPS BAND ══ */}
+      <div style={{ background:'rgba(168,85,247,.08)', border:`2px solid ${extTrips.length>0?'rgba(168,85,247,.35)':'rgba(255,255,255,.08)'}`, borderRadius:14, overflow:'hidden', marginBottom:16 }}>
+        {/* Band Header */}
+        <div onClick={() => setShowExtDetail(s=>!s)} style={{ padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', transition:'background .15s' }}
+          onMouseEnter={e=>e.currentTarget.style.background='rgba(168,85,247,.08)'}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <span style={{ fontSize:22 }}>🚗</span>
+            <div>
+              <div style={{ fontSize:15, fontWeight:800, color:'white' }}>المشاوير الخارجية</div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:2 }}>مشاوير خارج نطاق التوصيل المعتاد</div>
+            </div>
+            {extTrips.length > 0 && (
+              <span style={{ fontSize:12, fontWeight:800, padding:'3px 12px', borderRadius:10, background:'rgba(168,85,247,.2)', color:'#d8b4fe', border:'1px solid rgba(168,85,247,.3)' }}>
+                {extTrips.length} مشوار
+              </span>
+            )}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,auto)', gap:20, fontSize:12 }}>
+              {[
+                ['🚗 عدد', extTrips.length, '#d8b4fe'],
+                ['✅ مكتمل', extCompleted.length, '#10b981'],
+                ['📍 مسافة', fmt(extTotalDist)+' كم', '#7b9fff'],
+                ['💰 تكلفة', fmt(extTotalCost)+' ج', '#fcd34d'],
+              ].map(([l,v,c]) => (
+                <div key={l} style={{ textAlign:'center' }}>
+                  <div style={{ color:'rgba(255,255,255,.4)', fontSize:10, marginBottom:2 }}>{l}</div>
+                  <div style={{ fontWeight:800, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <span style={{ color:'rgba(255,255,255,.4)', fontSize:16, transition:'transform .3s', display:'inline-block', transform:showExtDetail?'rotate(180deg)':'rotate(0)' }}>▼</span>
+          </div>
+        </div>
+
+        {/* Band Detail */}
+        {showExtDetail && (
+          <div style={{ borderTop:'1px solid rgba(168,85,247,.2)', padding:'14px 18px', animation:'fadeUp .25s ease' }}>
+            {extTrips.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'20px 0', color:'rgba(255,255,255,.3)', fontSize:13 }}>
+                لا توجد مشاوير خارجية مسجلة بعد — أضف مشوار خارجي من صفحة الرحلات
+              </div>
+            ) : (
+              <>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:10 }}>
+                  <Btn onClick={exportExtTrips} small color="#a855f7">📥 تصدير المشاوير</Btn>
+                </div>
+                <Tbl cols={['المندوب','الوصف/الوجهة','المسافة','الوقت','التكلفة','الحالة','التاريخ']} rows={
+                  extTrips.map(t => {
+                    const drv = drivers.find(d => d.id === t.driver_id)
+                    const sc_ = { مكتملة:'#10b981', نشطة:'#22c55e', معلقة:'#f59e0b', ملغية:'#ef4444' }[t.status] || '#6b7280'
+                    return (
+                      <Tr key={t.id}>
+                        <Td>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <div style={{ width:28, height:28, borderRadius:'50%', background:'rgba(168,85,247,.2)', display:'flex', alignItems:'center', justifyContent:'center', color:'#d8b4fe', fontSize:11, fontWeight:800, flexShrink:0 }}>{drv?.name?.charAt(0)||'?'}</div>
+                            <span style={{ fontWeight:700, color:'white', fontSize:13 }}>{drv?.name||'—'}</span>
+                          </div>
+                        </Td>
+                        <Td style={{ color:'rgba(255,255,255,.6)', fontSize:12, maxWidth:160 }}>{t.external_notes||'—'}</Td>
+                        <Td style={{ color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{t.distance||0} كم</Td>
+                        <Td style={{ color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace" }}>{t.time_mins||0} د</Td>
+                        <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(t.external_cost||0)} ج</Td>
+                        <Td><span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:7, background:sc_+'22', color:sc_ }}>{t.status}</span></Td>
+                        <Td style={{ fontSize:11, color:'rgba(255,255,255,.35)' }}>{fmtDate(t.created_at)}</Td>
+                      </Tr>
+                    )
+                  })
+                }/>
+                {/* Summary Bar */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, marginTop:14 }}>
+                  {[
+                    ['🚗 إجمالي المشاوير', extTrips.length, '#a855f7'],
+                    ['✅ منها مكتملة', extCompleted.length, '#10b981'],
+                    ['📍 إجمالي المسافة', fmt(extTotalDist)+' كم', '#7b9fff'],
+                    ['💰 إجمالي التكلفة', fmt(extTotalCost)+' ج', '#fcd34d'],
+                    ['📊 متوسط تكلفة/مشوار', extTrips.length ? fmt(Math.round(extTotalCost/extTrips.length))+' ج' : '0 ج', '#f97316'],
+                  ].map(([l,v,c]) => (
+                    <div key={l} style={{ background:'rgba(168,85,247,.08)', borderRadius:10, padding:'9px 13px', border:'1px solid rgba(168,85,247,.15)' }}>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginBottom:3 }}>{l}</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>💳 توزيع التحصيل</SectionTitle>
@@ -1540,29 +1814,44 @@ function Report({ data }) {
       </div>
       <Card>
         <SectionTitle>👥 أداء المندوبين</SectionTitle>
-        <Tbl cols={['المندوب','المنطقة','طلبات','مسلّم','الالتزام','تقييم','أرباح']} rows={
-          [...drivers].sort((a,b)=>b.delivered-a.delivered).map(d => (
-            <Tr key={d.id}>
-              <Td style={{ fontWeight:700, color:'white' }}>{d.name}</Td>
-              <Td style={{ color:'rgba(255,255,255,.5)' }}>{d.zone}</Td>
-              <Td style={{ textAlign:'center', color:'rgba(255,255,255,.7)', fontFamily:"'JetBrains Mono',monospace" }}>{d.orders}</Td>
-              <Td style={{ textAlign:'center', fontWeight:700, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{d.delivered}</Td>
-              <Td>
-                <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:80 }}>
-                  <BarMini val={d.on_time_rate||0} max={100} color={d.on_time_rate>85?'#10b981':d.on_time_rate>70?'#f59e0b':'#ef4444'}/>
-                  <span style={{ fontSize:10, fontWeight:700, color:'white', minWidth:28 }}>{d.on_time_rate}%</span>
-                </div>
-              </Td>
-              <Td><div style={{ display:'flex', gap:1 }}>{Array(5).fill(0).map((_,i)=><span key={i} style={{ fontSize:11, color:i<Math.round(d.rating||0)?'#f59e0b':'rgba(255,255,255,.1)' }}>★</span>)}</div></Td>
-              <Td style={{ fontWeight:700, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(d.earnings)} ج</Td>
-            </Tr>
-          ))
+        <Tbl cols={['المندوب','المنطقة','طلبات','مسلّم','الالتزام','تقييم','أرباح','مشاوير خارجية']} rows={
+          [...drivers].sort((a,b)=>b.delivered-a.delivered).map(d => {
+            const dExtTrips = extTrips.filter(t => t.driver_id === d.id)
+            return (
+              <Tr key={d.id}>
+                <Td style={{ fontWeight:700, color:'white' }}>{d.name}</Td>
+                <Td style={{ color:'rgba(255,255,255,.5)' }}>{d.zone}</Td>
+                <Td style={{ textAlign:'center', color:'rgba(255,255,255,.7)', fontFamily:"'JetBrains Mono',monospace" }}>{d.orders}</Td>
+                <Td style={{ textAlign:'center', fontWeight:700, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{d.delivered}</Td>
+                <Td>
+                  <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:80 }}>
+                    <BarMini val={d.on_time_rate||0} max={100} color={d.on_time_rate>85?'#10b981':d.on_time_rate>70?'#f59e0b':'#ef4444'}/>
+                    <span style={{ fontSize:10, fontWeight:700, color:'white', minWidth:28 }}>{d.on_time_rate}%</span>
+                  </div>
+                </Td>
+                <Td><div style={{ display:'flex', gap:1 }}>{Array(5).fill(0).map((_,i)=><span key={i} style={{ fontSize:11, color:i<Math.round(d.rating||0)?'#f59e0b':'rgba(255,255,255,.1)' }}>★</span>)}</div></Td>
+                <Td style={{ fontWeight:700, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(d.earnings)} ج</Td>
+                <Td>
+                  {dExtTrips.length > 0
+                    ? <div>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:7, background:'rgba(168,85,247,.15)', color:'#d8b4fe' }}>{dExtTrips.length} مشوار</span>
+                        <div style={{ fontSize:10, color:'#fcd34d', marginTop:2, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(dExtTrips.reduce((s,t)=>s+parseFloat(t.external_cost||0),0))} ج</div>
+                      </div>
+                    : <span style={{ color:'rgba(255,255,255,.2)', fontSize:11 }}>—</span>
+                  }
+                </Td>
+              </Tr>
+            )
+          })
         }/>
       </Card>
     </div>
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  NOTIFICATIONS
+// ══════════════════════════════════════════════════════
 function Notifs({ data }) {
   const { orders, zones, drivers, settings } = data
   const now = new Date(); const today = now.toISOString().slice(0,10)
@@ -1582,12 +1871,6 @@ function Notifs({ data }) {
   const retCnt = orders.filter(o=>o.status==='مرتجع').length
   if (retCnt > 0) notifs.push({ type:'info', ic:'↩️', t:'يوجد مرتجعات', m:`${retCnt} طلب يحتاج مراجعة`, ts:retCnt+'طلب' })
   drivers.forEach(d => { if (d.status==='غير متاح') notifs.push({ type:'info', ic:'🏍', t:'مندوب غير متاح', m:`${d.name} — ${d.zone}`, ts: d.zone }) })
-  // تنبيه الشفت المفتوح لفترة طويلة
-  const openShift = (data.shifts||[]).find(s => s.status === 'open' && s.date === today)
-  if (openShift) {
-    const shiftAge = Math.floor((now - new Date(openShift.opened_at)) / 60000)
-    if (shiftAge > 480) notifs.push({ type:'error', ic:'📅', t:'شفت مفتوح أكثر من 8 ساعات!', m:`شفت ${openShift.shift_type} — مفتوح منذ ${Math.floor(shiftAge/60)} ساعة`, ts: Math.floor(shiftAge/60)+'س' })
-  }
   const TC = {
     error:{ bg:'rgba(239,68,68,.1)',   bc:'rgba(239,68,68,.35)',  tc:'#fca5a5', l:'🔴 عاجل' },
     warn: { bg:'rgba(245,158,11,.1)',  bc:'rgba(245,158,11,.35)', tc:'#fcd34d', l:'🟡 تحذير' },
@@ -1629,6 +1912,9 @@ function Notifs({ data }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════════════════
 function Settings({ data, refetch }) {
   const s = data.settings || {}
   const [cn, sCn]  = useState(s.companyName||'دليفري خليل الحلواني')
@@ -1695,6 +1981,9 @@ function Settings({ data, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  USERS
+// ══════════════════════════════════════════════════════
 function Users({ data, refetch, currentUser }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { users } = data
@@ -1784,6 +2073,9 @@ function UserForm({ user_, onClose, refetch }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  AUTO-REFRESH BAR
+// ══════════════════════════════════════════════════════
 function RefreshBar({ lastUpdate, onRefresh }) {
   const [secs, setSecs] = useState(60)
   useEffect(() => {
@@ -1798,11 +2090,14 @@ function RefreshBar({ lastUpdate, onRefresh }) {
       </div>
       <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontFamily:"'JetBrains Mono',monospace" }}>{secs}ث</span>
       <button onClick={onRefresh} style={{ background:'none', border:'none', color:'rgba(255,255,255,.3)', cursor:'pointer', fontSize:13, transition:'color .15s' }}
-        onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.3)'}>↻</button>
+        onMouseEnter={e=>e.target.style.color='white'} onMouseLeave={e=>e.target.style.color='rgba(255,255,255,.3)'}>↻</button>
     </div>
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS OVERLAY
+// ══════════════════════════════════════════════════════
 function ShortcutsModal({ onClose }) {
   return (
     <Modal title="⌨️ اختصارات لوحة المفاتيح" onClose={onClose}>
@@ -1818,6 +2113,9 @@ function ShortcutsModal({ onClose }) {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  LOADING SCREEN
+// ══════════════════════════════════════════════════════
 function LoadingScreen() {
   const [dots, setDots] = useState(0)
   useEffect(() => { const t = setInterval(() => setDots(d => (d+1)%4), 400); return () => clearInterval(t) }, [])
@@ -1837,11 +2135,16 @@ function LoadingScreen() {
   )
 }
 
+// ══════════════════════════════════════════════════════
+//  PREP STATION  —  محطة التحضير
+// ══════════════════════════════════════════════════════
 function PrepStation({ data, refetch }) {
   const prepOrders = data.orders.filter(o => o.status === 'قيد التحضير')
   const [done, setDone]   = useState([])
   const [sound, setSound] = useState(true)
   const prevLen = useRef(prepOrders.length)
+
+  // Notification sound using Web Audio API
   const playBeep = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -1853,17 +2156,22 @@ function PrepStation({ data, refetch }) {
       osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
     } catch {}
   }, [])
+
+  // Alert on new prep orders
   useEffect(() => {
     if (prepOrders.length > prevLen.current && sound) playBeep()
     prevLen.current = prepOrders.length
   }, [prepOrders.length, sound, playBeep])
+
   const markReady = async (id) => {
     setDone(d => [...d, id])
     await supabase.from('delivery_orders').update({ status:'جاهز للشحن' }).eq('id', id)
     setTimeout(() => { setDone(d => d.filter(x => x !== id)); refetch(); toast.success('تم تحويل الطلب للشحن ✅') }, 600)
   }
+
   return (
     <div className="page-enter">
+      {/* Header */}
       <div style={{ background:'linear-gradient(135deg,#eab308,#f97316)', borderRadius:16, padding:'18px 22px', marginBottom:18, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <div style={{ fontSize:22, fontWeight:900, color:'white' }}>🍳 محطة التحضير</div>
@@ -1874,13 +2182,20 @@ function PrepStation({ data, refetch }) {
             <div style={{ fontSize:28, fontWeight:900, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{prepOrders.length}</div>
             <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>طلب</div>
           </div>
-          <button onClick={() => setSound(s=>!s)} style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:10, padding:'8px 12px', cursor:'pointer', color:'white', fontSize:18 }}>
+          <button onClick={() => setSound(s=>!s)} style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:10, padding:'8px 12px', cursor:'pointer', color:'white', fontSize:18 }} title={sound?'إيقاف الصوت':'تشغيل الصوت'}>
             {sound ? '🔔' : '🔕'}
           </button>
         </div>
       </div>
+
       {prepOrders.length === 0 ? (
-        <Card><div style={{ textAlign:'center', padding:60 }}><div style={{ fontSize:64, marginBottom:12, animation:'float 3s ease infinite' }}>✅</div><div style={{ fontSize:18, fontWeight:800, color:'white' }}>كل الطلبات جاهزة!</div><div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>لا يوجد طلبات في التحضير حالياً</div></div></Card>
+        <Card>
+          <div style={{ textAlign:'center', padding:60 }}>
+            <div style={{ fontSize:64, marginBottom:12, animation:'float 3s ease infinite' }}>✅</div>
+            <div style={{ fontSize:18, fontWeight:800, color:'white' }}>كل الطلبات جاهزة!</div>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginTop:6 }}>لا يوجد طلبات في التحضير حالياً</div>
+          </div>
+        </Card>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16 }}>
           {prepOrders.map((o, idx) => {
@@ -1890,6 +2205,8 @@ function PrepStation({ data, refetch }) {
             const urgent  = age > 15
             return (
               <div key={o.id} style={{ background:isDone?'rgba(16,185,129,.1)':'rgba(255,255,255,.04)', border:`2px solid ${isDone?'rgba(16,185,129,.5)':urgent?'rgba(239,68,68,.4)':'rgba(234,179,8,.25)'}`, borderRadius:18, overflow:'hidden', transition:'all .3s', animation:`fadeUp .3s ease ${idx*.05}s both`, opacity:isDone?.6:1, transform:isDone?'scale(.97)':'scale(1)' }}>
+
+                {/* Order Header */}
                 <div style={{ background:urgent?'rgba(239,68,68,.15)':'rgba(234,179,8,.12)', padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <div>
                     <div style={{ fontSize:16, fontWeight:900, color:'white' }}>{o.customer}</div>
@@ -1900,6 +2217,8 @@ function PrepStation({ data, refetch }) {
                     <div style={{ fontSize:11, fontWeight:700, color:urgent?'#fca5a5':'#fcd34d', marginTop:2 }}>⏱ {age} دقيقة</div>
                   </div>
                 </div>
+
+                {/* Products */}
                 <div style={{ padding:'12px 16px' }}>
                   {prods.length > 0 ? (
                     <div style={{ marginBottom:12 }}>
@@ -1913,11 +2232,14 @@ function PrepStation({ data, refetch }) {
                   ) : (
                     <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginBottom:12, textAlign:'center', padding:'8px 0' }}>لا توجد أصناف مسجلة</div>
                   )}
+
                   {o.notes && (
                     <div style={{ background:'rgba(59,91,254,.1)', border:'1px solid rgba(59,91,254,.2)', borderRadius:8, padding:'7px 10px', fontSize:12, color:'#7b9fff', marginBottom:10 }}>
                       📝 {o.notes}
                     </div>
                   )}
+
+                  {/* Value + Action */}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:4 }}>
                     <span style={{ fontSize:16, fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(o.value)} ج</span>
                     <button onClick={() => markReady(o.id)} disabled={isDone}
@@ -1931,6 +2253,8 @@ function PrepStation({ data, refetch }) {
           })}
         </div>
       )}
+
+      {/* Stats bar */}
       <div style={{ marginTop:16, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:10 }}>
         <Kpi label="⏳ في التحضير" value={prepOrders.length} color="#eab308" urgent={prepOrders.length>3}/>
         <Kpi label="✅ جاهز للشحن" value={data.orders.filter(o=>o.status==='جاهز للشحن').length} color="#a855f7"/>
@@ -1946,14 +2270,15 @@ function PrepStation({ data, refetch }) {
 // ══════════════════════════════════════════════════════
 function DeliveryTracker({ data, refetch }) {
   const { drivers, orders } = data
-  const [myDriverId,  setMyDriverId]  = useState('')
-  const [gpsActive,   setGpsActive]   = useState(false)
-  const [gpsWatcher,  setGpsWatcher]  = useState(null)
-  const [myCoords,    setMyCoords]    = useState(null)
-  const [driverLocs,  setDriverLocs]  = useState({})
-  const [selectedDrv, setSelectedDrv] = useState(null)
-  const [mode,        setMode]        = useState('admin')
+  const [myDriverId,    setMyDriverId]    = useState('')
+  const [gpsActive,     setGpsActive]     = useState(false)
+  const [gpsWatcher,    setGpsWatcher]    = useState(null)
+  const [myCoords,      setMyCoords]      = useState(null)
+  const [driverLocs,    setDriverLocs]    = useState({})
+  const [selectedDrv,   setSelectedDrv]   = useState(null)
+  const [mode,          setMode]          = useState('admin') // 'admin' | 'driver'
 
+  // Fetch driver locations from Supabase
   const fetchLocations = useCallback(async () => {
     const { data: locs } = await supabase.from('delivery_driver_locations').select('*')
     if (locs) {
@@ -1961,12 +2286,9 @@ function DeliveryTracker({ data, refetch }) {
     }
   }, [])
 
-  useEffect(() => {
-    fetchLocations()
-    const t = setInterval(fetchLocations, 15000)
-    return () => clearInterval(t)
-  }, [fetchLocations])
+  useEffect(() => { fetchLocations(); const t = setInterval(fetchLocations, 15000); return () => clearInterval(t) }, [fetchLocations])
 
+  // Start GPS sharing
   const startGPS = () => {
     if (!myDriverId) { toast.error('اختر اسمك أولاً'); return }
     if (!navigator.geolocation) { toast.error('المتصفح لا يدعم GPS'); return }
@@ -1998,6 +2320,7 @@ function DeliveryTracker({ data, refetch }) {
 
   return (
     <div className="page-enter">
+      {/* Mode Switch */}
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
         {[['admin','👁 عرض الأدمن'],['driver','🏍 وضع السائق']].map(([m,l]) => (
           <button key={m} onClick={() => setMode(m)} style={{ padding:'8px 18px', borderRadius:10, border:`2px solid ${mode===m?'#3b5bfe':'rgba(255,255,255,.1)'}`, background:mode===m?'rgba(59,91,254,.2)':'transparent', color:mode===m?'white':'rgba(255,255,255,.5)', cursor:'pointer', fontFamily:'inherit', fontWeight:700, fontSize:13, transition:'all .2s' }}>{l}</button>
@@ -2005,6 +2328,7 @@ function DeliveryTracker({ data, refetch }) {
       </div>
 
       {mode === 'driver' ? (
+        /* ── DRIVER MODE ── */
         <div>
           <Card neon>
             <div style={{ fontWeight:800, marginBottom:14, color:'white', fontSize:15 }}>🏍 وضع السائق</div>
@@ -2029,6 +2353,8 @@ function DeliveryTracker({ data, refetch }) {
               </div>
             )}
           </Card>
+
+          {/* Driver's Active Orders */}
           {myDriverId && (
             <div>
               <SectionTitle>📦 طلباتي النشطة ({myOrders.length})</SectionTitle>
@@ -2047,6 +2373,7 @@ function DeliveryTracker({ data, refetch }) {
                         <Badge s={o.status}/>
                       </div>
                     </div>
+                    {/* Status update buttons */}
                     <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                       {o.status === 'تم تعيين المندوب' && (
                         <Btn onClick={() => updateOrderStatus(o.id, 'في الطريق')} color="#22c55e">🚀 في الطريق</Btn>
@@ -2069,6 +2396,7 @@ function DeliveryTracker({ data, refetch }) {
           )}
         </div>
       ) : (
+        /* ── ADMIN MODE ── */
         <div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:16 }}>
             <Kpi label="🏍 شغّالين" value={activeDrivers.length} color="#10b981"/>
@@ -2076,6 +2404,8 @@ function DeliveryTracker({ data, refetch }) {
             <Kpi label="🚀 في الطريق" value={orders.filter(o=>o.status==='في الطريق').length} color="#22c55e"/>
             <Kpi label="📦 لم يُستلم" value={orders.filter(o=>o.status==='تم تعيين المندوب').length} color="#f59e0b"/>
           </div>
+
+          {/* Drivers Map Cards */}
           <SectionTitle>📍 مواقع المندوبين</SectionTitle>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14, marginBottom:16 }}>
             {activeDrivers.map(d => {
@@ -2113,6 +2443,7 @@ function DeliveryTracker({ data, refetch }) {
                           🌍
                         </a>
                       </div>
+                      {/* Mini Map Embed */}
                       {selectedDrv === d.id && (
                         <div style={{ marginTop:10, borderRadius:10, overflow:'hidden', border:'1px solid rgba(255,255,255,.1)' }}>
                           <iframe title={`map-${d.id}`} width="100%" height="180" frameBorder="0" scrolling="no"
@@ -2131,6 +2462,8 @@ function DeliveryTracker({ data, refetch }) {
               )
             })}
           </div>
+
+          {/* Active Orders Table */}
           <Card>
             <SectionTitle>🚀 الطلبات في الطريق</SectionTitle>
             <Tbl cols={['العميل','المنطقة','المندوب','القيمة','الحالة','منذ','الخريطة']} rows={
@@ -2165,130 +2498,61 @@ function DeliveryTracker({ data, refetch }) {
 }
 
 // ══════════════════════════════════════════════════════
-//  DAILY SHIFTS
+//  DAILY SHIFTS  —  إدارة الشفتات اليومية
 // ══════════════════════════════════════════════════════
 function DailyShifts({ data, refetch }) {
   const { orders, shifts } = data
-  const [notes,     setNotes]     = useState('')
-  const [opening,   setOpen]      = useState(false)
-  const [closing,   setClose]     = useState(false)
-  const [conf,      setConf]      = useState(null)
-  const [viewShift, setViewShift] = useState(null)
+  const [notes, setNotes]   = useState('')
+  const [opening, setOpen]  = useState(false)
+  const [closing, setClose] = useState(false)
+  const [conf,    setConf]  = useState(null)
   const today = new Date().toISOString().slice(0,10)
-  const now   = new Date()
 
-  const todayShifts  = (shifts||[]).filter(s => s.date === today)
-  const openShift    = todayShifts.find(s => s.status === 'open')
-  const hasM         = todayShifts.some(s => s.shift_type === 'صباحي')
-  const hasE         = todayShifts.some(s => s.shift_type === 'مسائي')
+  const todayShifts = shifts.filter(s => s.date === today)
+  const openShift   = todayShifts.find(s => s.status === 'open')
+  const hasM = todayShifts.some(s => s.shift_type === 'صباحي')
+  const hasE = todayShifts.some(s => s.shift_type === 'مسائي')
 
-  const shiftOrders    = openShift
-    ? orders.filter(o => new Date(o.created_at) >= new Date(openShift.opened_at))
+  // Orders for current open shift
+  const shiftOrders = openShift
+    ? orders.filter(o => o.created_at >= openShift.opened_at)
     : []
-  const shiftDelivered = shiftOrders.filter(o => o.status === 'تم التسليم')
-  const shiftRevenue   = shiftDelivered.reduce((s,o) => s + parseFloat(o.value||0), 0)
-  const shiftFees      = shiftOrders.reduce((s,o) => s + parseFloat(o.delivery_fee||0), 0)
-  const shiftAge       = openShift ? Math.floor((now - new Date(openShift.opened_at)) / 60000) : 0
-  const shiftOverdue   = shiftAge > 480
-
-  const getShiftSummary = (shift) => {
-    const sOrders = orders.filter(o =>
-      new Date(o.created_at) >= new Date(shift.opened_at) &&
-      (!shift.closed_at || new Date(o.created_at) <= new Date(shift.closed_at))
-    )
-    const sDelivered = sOrders.filter(o => o.status === 'تم التسليم')
-    return {
-      total:     sOrders.length,
-      delivered: sDelivered.length,
-      revenue:   sDelivered.reduce((s,o) => s+parseFloat(o.value||0),0),
-      fees:      sOrders.reduce((s,o) => s+parseFloat(o.delivery_fee||0),0),
-      returned:  sOrders.filter(o=>o.status==='مرتجع').length,
-      cancelled: sOrders.filter(o=>o.status==='ملغي').length,
-      rate:      sOrders.length ? Math.round(sDelivered.length/sOrders.length*100) : 0,
-    }
-  }
+  const shiftRevenue  = shiftOrders.filter(o=>o.status==='تم التسليم').reduce((s,o)=>s+parseFloat(o.value||0),0)
+  const shiftDelivered = shiftOrders.filter(o=>o.status==='تم التسليم').length
 
   const openNewShift = async (type) => {
     setOpen(true)
     const res = await supabase.from('delivery_shifts').insert([{
       date: today, shift_type: type, status: 'open',
       opened_at: new Date().toISOString(), opened_by: 'مدير النظام',
-      orders_count: 0, delivered_count: 0, revenue: 0,
+      orders_count: 0, revenue: 0
     }])
     setOpen(false)
     if (res.error) { toast.error('خطأ: ' + res.error.message); return }
-    toast.success(`تم فتح الشفت ${type} 🟢`)
-    refetch()
+    toast.success(`تم فتح الشفت ${type} 🟢`); refetch()
   }
 
   const closeShift = async () => {
     if (!openShift) return
     setClose(true)
-    await supabase.from('delivery_shifts').update({
+    const res = await supabase.from('delivery_shifts').update({
       status: 'closed', closed_at: new Date().toISOString(),
-      orders_count: shiftOrders.length, delivered_count: shiftDelivered.length,
-      revenue: shiftRevenue, notes: notes || '',
+      orders_count: shiftOrders.length, revenue: shiftRevenue,
+      notes: notes || ''
     }).eq('id', openShift.id)
     setClose(false); setConf(null)
-    toast.success('تم غلق الشفت وتسجيل الملخص ✅')
-    setNotes(''); refetch()
+    if (res.error) { toast.error('خطأ: ' + res.error.message); return }
+    toast.success('تم غلق الشفت وتسجيل الملخص ✅'); setNotes(''); refetch()
   }
 
-  const shiftsByDay = useMemo(() => {
-    const map = {}
-    ;(shifts||[]).forEach(s => {
-      if (!map[s.date]) map[s.date] = []
-      map[s.date].push(s)
-    })
-    return Object.entries(map).sort((a,b) => b[0].localeCompare(a[0])).slice(0, 14)
-  }, [shifts])
-
   const SHIFT_COLOR = { صباحي:'#f59e0b', مسائي:'#3b5bfe' }
-  const SHIFT_ICON  = { صباحي:'☀️', مسائي:'🌙' }
+  const STATUS_C    = { open:'#10b981', closed:'#6b7280' }
 
   return (
     <div className="page-enter">
       {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)} danger={false}/>}
 
-      {viewShift && (() => {
-        const sm = getShiftSummary(viewShift)
-        return (
-          <Modal title={`${SHIFT_ICON[viewShift.shift_type]} تفاصيل الشفت — ${fmtDate(viewShift.date)}`} onClose={() => setViewShift(null)}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
-              {[
-                ['📦 إجمالي الطلبات', sm.total,           '#3b5bfe'],
-                ['✅ تم التسليم',      sm.delivered,       '#10b981'],
-                ['💰 الإيرادات',       fmt(sm.revenue)+' ج','#ca8a04'],
-                ['🚚 رسوم التوصيل',   fmt(sm.fees)+' ج',  '#a855f7'],
-                ['↩ مرتجع',           sm.returned,        '#f59e0b'],
-                ['❌ ملغاة',           sm.cancelled,       '#ef4444'],
-                ['📊 معدل النجاح',    sm.rate+'%',        '#10b981'],
-                ['⏱ مدة الشفت',
-                  viewShift.closed_at
-                    ? Math.floor((new Date(viewShift.closed_at)-new Date(viewShift.opened_at))/60000)+'د'
-                    : 'مفتوح',
-                  '#6366f1'],
-              ].map(([l,v,c]) => (
-                <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:9, padding:'10px 14px' }}>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginBottom:3 }}>{l}</div>
-                  <div style={{ fontSize:16, fontWeight:800, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'rgba(255,255,255,.4)', marginBottom:8 }}>
-              <span>⏰ الفتح: {fmtTime(viewShift.opened_at)}</span>
-              <span>⏰ الإغلاق: {viewShift.closed_at ? fmtTime(viewShift.closed_at) : '—'}</span>
-              <span>👤 {viewShift.opened_by||'—'}</span>
-            </div>
-            {viewShift.notes && (
-              <div style={{ background:'rgba(59,91,254,.1)', border:'1px solid rgba(59,91,254,.2)', borderRadius:9, padding:'9px 14px', fontSize:13, color:'#7b9fff' }}>
-                📝 {viewShift.notes}
-              </div>
-            )}
-          </Modal>
-        )
-      })()}
-
+      {/* Today Header */}
       <div style={{ background:'linear-gradient(135deg,#1a1d2e,#2d3561)', borderRadius:16, padding:'18px 22px', marginBottom:16 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
           <div>
@@ -2297,89 +2561,55 @@ function DailyShifts({ data, refetch }) {
               {new Date().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
             </div>
           </div>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            {openShift && (
-              <div style={{ background:shiftOverdue?'rgba(239,68,68,.15)':'rgba(16,185,129,.15)', border:`1px solid ${shiftOverdue?'rgba(239,68,68,.3)':'rgba(16,185,129,.3)'}`, borderRadius:12, padding:'8px 16px', display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ width:8, height:8, borderRadius:'50%', background:shiftOverdue?'#ef4444':'#10b981', animation:'pulse 1.5s infinite', display:'inline-block' }}/>
-                <span style={{ color:shiftOverdue?'#fca5a5':'#6ee7b7', fontWeight:800, fontSize:13 }}>
-                  {SHIFT_ICON[openShift.shift_type]} شفت {openShift.shift_type} مفتوح
-                </span>
-                <span style={{ color:'rgba(255,255,255,.4)', fontSize:11 }}>
-                  {shiftAge >= 60 ? Math.floor(shiftAge/60)+'س ' : ''}{shiftAge%60}د
-                </span>
-                {shiftOverdue && <span style={{ fontSize:11, fontWeight:700, color:'#fca5a5', animation:'pulse 1s infinite' }}>⚠ تجاوز 8 ساعات!</span>}
-              </div>
-            )}
-            {!openShift && !hasM && !hasE && (
-              <div style={{ background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.3)', borderRadius:12, padding:'8px 16px', fontSize:12, color:'#fcd34d', fontWeight:700 }}>
-                ⚠ لا يوجد شفت مفتوح اليوم
-              </div>
-            )}
-          </div>
+          {openShift && (
+            <div style={{ background:'rgba(16,185,129,.15)', border:'1px solid rgba(16,185,129,.3)', borderRadius:12, padding:'8px 16px', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', animation:'pulse 1.5s infinite', display:'inline-block' }}/>
+              <span style={{ color:'#6ee7b7', fontWeight:800, fontSize:13 }}>الشفت {openShift.shift_type} مفتوح</span>
+              <span style={{ color:'rgba(255,255,255,.4)', fontSize:11 }}>منذ {fmtTime(openShift.opened_at)}</span>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Today's KPIs (open shift) */}
       {openShift && (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:16 }}>
-          <Kpi label="📦 طلبات الشفت"  value={shiftOrders.length}    color="#3b5bfe"/>
-          <Kpi label="✅ تسليم"         value={shiftDelivered.length} color="#10b981"/>
-          <Kpi label="💰 إيرادات"       value={fmt(shiftRevenue)}     color="#ca8a04" sub="جنيه"/>
-          <Kpi label="🚚 رسوم توصيل"   value={fmt(shiftFees)}        color="#a855f7" sub="جنيه"/>
-          <Kpi label="📊 معدل النجاح"  value={shiftOrders.length ? Math.round(shiftDelivered.length/shiftOrders.length*100)+'%' : '0%'} color="#10b981"/>
-          <Kpi label="⏱ مدة الشفت"    value={shiftAge >= 60 ? Math.floor(shiftAge/60)+'س '+shiftAge%60+'د' : shiftAge+'د'} color={shiftOverdue?'#ef4444':'#6366f1'} urgent={shiftOverdue}/>
+          <Kpi label="📦 طلبات الشفت" value={shiftOrders.length} color="#3b5bfe"/>
+          <Kpi label="✅ تسليم" value={shiftDelivered} color="#10b981"/>
+          <Kpi label="💰 إيرادات" value={fmt(shiftRevenue)} color="#ca8a04" sub="جنيه"/>
+          <Kpi label="⏱ مدة الشفت" value={Math.floor((Date.now()-new Date(openShift.opened_at))/60000)+'د'} color="#a855f7"/>
         </div>
       )}
 
-      <Card neon style={{ marginBottom:14 }}>
-        <div style={{ fontWeight:800, marginBottom:14, color:'white', fontSize:14 }}>🟢 فتح شفت جديد ليوم {fmtDate(today)}</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          {[
-            ['صباحي','☀️ شفت صباحي','06:00 — 14:00', hasM, '#f59e0b'],
-            ['مسائي','🌙 شفت مسائي','14:00 — 22:00', hasE, '#3b5bfe'],
-          ].map(([type, label, time, done, color]) => (
-            <div key={type} style={{ background:done?'rgba(107,114,128,.06)':'rgba(255,255,255,.04)', border:`2px solid ${done?'rgba(107,114,128,.2)':color+'44'}`, borderRadius:14, padding:18, textAlign:'center', transition:'all .2s' }}>
-              <div style={{ fontSize:36, marginBottom:8 }}>{type==='صباحي'?'☀️':'🌙'}</div>
-              <div style={{ fontSize:15, fontWeight:800, color:'white', marginBottom:4 }}>{label}</div>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>{time}</div>
-              {done ? (
-                <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'center' }}>
-                  <span style={{ fontSize:12, fontWeight:700, padding:'5px 14px', borderRadius:9, background:'rgba(16,185,129,.15)', color:'#6ee7b7', border:'1px solid rgba(16,185,129,.25)' }}>✓ تم فتحه اليوم</span>
-                  {todayShifts.find(s=>s.shift_type===type) && (
-                    <Btn onClick={() => setViewShift(todayShifts.find(s=>s.shift_type===type))} small color="rgba(255,255,255,.1)">👁 عرض الملخص</Btn>
-                  )}
-                </div>
-              ) : openShift ? (
-                <span style={{ fontSize:11, color:'rgba(255,255,255,.25)', fontStyle:'italic' }}>أغلق الشفت الحالي أولاً</span>
-              ) : (
-                <Btn onClick={() => setConf({ msg:`فتح شفت ${type}؟`, ok:()=>openNewShift(type) })} color={color} loading={opening}>
-                  {type==='صباحي'?'☀️':'🌙'} فتح الشفت
-                </Btn>
-              )}
+      {/* Open Shift Buttons */}
+      <Card neon>
+        <div style={{ fontWeight:800, marginBottom:14, color:'white' }}>🟢 فتح شفت جديد</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+          {[['صباحي','☀️ شفت صباحي','06:00 — 14:00',hasM],['مسائي','🌙 شفت مسائي','14:00 — 22:00',hasE]].map(([type,label,time,done]) => (
+            <div key={type} style={{ background:`${done?'rgba(107,114,128,.08)':'rgba(255,255,255,.04)'}`, border:`1px solid ${done?'rgba(107,114,128,.2)':`${SHIFT_COLOR[type]}44`}`, borderRadius:14, padding:16, textAlign:'center', opacity:done&&!openShift?.shift_type===type?.1:1 }}>
+              <div style={{ fontSize:28, marginBottom:6 }}>{type==='صباحي'?'☀️':'🌙'}</div>
+              <div style={{ fontSize:14, fontWeight:800, color:'white', marginBottom:3 }}>{label}</div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginBottom:12 }}>{time}</div>
+              {done
+                ? <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:8, background:'rgba(107,114,128,.2)', color:'#9ca3af' }}>✓ تم فتحه اليوم</span>
+                : openShift
+                  ? <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>أغلق الشفت الحالي أولاً</span>
+                  : <Btn onClick={() => setConf({ msg:`فتح شفت ${type}؟`, ok:()=>openNewShift(type) })} color={SHIFT_COLOR[type]} loading={opening}>{type==='صباحي'?'☀️':'🌙'} فتح الشفت</Btn>
+              }
             </div>
           ))}
         </div>
       </Card>
 
+      {/* Close Shift */}
       {openShift && (
-        <Card style={{ border:`1px solid ${shiftOverdue?'rgba(239,68,68,.35)':'rgba(239,68,68,.2)'}`, background:shiftOverdue?'rgba(239,68,68,.08)':'rgba(239,68,68,.04)', marginBottom:14 }}>
-          {shiftOverdue && (
-            <div className="urgent-pulse" style={{ background:'rgba(239,68,68,.15)', border:'1px solid rgba(239,68,68,.3)', borderRadius:9, padding:'9px 14px', marginBottom:12, fontSize:13, color:'#fca5a5', fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>
-              ⚠️ تحذير: الشفت مفتوح أكتر من 8 ساعات! يجب الإغلاق الآن.
-            </div>
-          )}
-          <div style={{ fontWeight:800, marginBottom:12, color:'#fca5a5', fontSize:14 }}>
-            🔴 إغلاق الشفت {SHIFT_ICON[openShift.shift_type]} {openShift.shift_type}
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:14 }}>
-            {[
-              ['طلبات الشفت',  shiftOrders.length, 'white'],
-              ['مسلّم',        shiftDelivered.length, '#10b981'],
-              ['مرتجع/ملغي',  shiftOrders.filter(o=>['مرتجع','ملغي'].includes(o.status)).length, '#ef4444'],
-              ['الإيرادات',    fmt(shiftRevenue)+' ج', '#fcd34d'],
-            ].map(([l,v,c]) => (
+        <Card style={{ border:'1px solid rgba(239,68,68,.2)', background:'rgba(239,68,68,.05)' }}>
+          <div style={{ fontWeight:800, marginBottom:12, color:'#fca5a5' }}>🔴 إغلاق الشفت {openShift.shift_type}</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:14 }}>
+            {[['طلبات الشفت',shiftOrders.length],['مسلّم',shiftDelivered],['الإيرادات',fmt(shiftRevenue)+' ج']].map(([l,v])=>(
               <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 12px', textAlign:'center' }}>
                 <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>{l}</div>
-                <div style={{ fontSize:16, fontWeight:800, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
               </div>
             ))}
           </div>
@@ -2393,77 +2623,41 @@ function DailyShifts({ data, refetch }) {
         </Card>
       )}
 
+      {/* Shifts History */}
       <Card>
-        <SectionTitle>📋 سجل الأيام ({shiftsByDay.length} يوم)</SectionTitle>
-        {shiftsByDay.map(([date, dayShifts]) => {
-          const isToday    = date === today
-          const allClosed  = dayShifts.every(s => s.status === 'closed')
-          const totalRev   = dayShifts.reduce((s,sh) => s + parseFloat(sh.revenue||0), 0)
-          const totalOrds  = dayShifts.reduce((s,sh) => s + parseInt(sh.orders_count||0), 0)
-          const totalDeliv = dayShifts.reduce((s,sh) => s + parseInt(sh.delivered_count||0), 0)
-          return (
-            <div key={date} style={{ marginBottom:14, background:'rgba(255,255,255,.03)', border:`1px solid ${isToday?'rgba(59,91,254,.3)':'rgba(255,255,255,.06)'}`, borderRadius:12, overflow:'hidden', animation:'fadeUp .3s ease' }}>
-              <div style={{ padding:'10px 14px', background:isToday?'rgba(59,91,254,.1)':'rgba(255,255,255,.03)', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ fontSize:14, fontWeight:800, color:'white' }}>{fmtDate(date)}</span>
-                  {isToday && <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'rgba(59,91,254,.2)', color:'#7b9fff' }}>اليوم</span>}
-                  {!allClosed && !isToday && <span className="urgent-pulse" style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'rgba(239,68,68,.15)', color:'#fca5a5' }}>⚠ غير مغلق!</span>}
-                </div>
-                <div style={{ display:'flex', gap:14, fontSize:12, color:'rgba(255,255,255,.5)' }}>
-                  <span>📦 {totalOrds}</span>
-                  <span style={{ color:'#10b981' }}>✅ {totalDeliv}</span>
-                  <span style={{ color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(totalRev)} ج</span>
-                </div>
-              </div>
-              <div style={{ padding:'10px 14px', display:'flex', gap:10, flexWrap:'wrap' }}>
-                {dayShifts.map(sh => {
-                  const color = SHIFT_COLOR[sh.shift_type] || '#6b7280'
-                  const sm    = getShiftSummary(sh)
-                  return (
-                    <div key={sh.id} onClick={() => setViewShift(sh)} style={{ flex:1, minWidth:200, background:'rgba(255,255,255,.04)', border:`1px solid ${color}33`, borderRadius:10, padding:'10px 14px', cursor:'pointer', transition:'all .15s' }}
-                      onMouseEnter={e=>e.currentTarget.style.borderColor=color+'66'}
-                      onMouseLeave={e=>e.currentTarget.style.borderColor=color+'33'}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                        <span style={{ fontSize:13, fontWeight:800, color }}>{SHIFT_ICON[sh.shift_type]} {sh.shift_type}</span>
-                        <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:sh.status==='open'?'rgba(16,185,129,.15)':'rgba(107,114,128,.15)', color:sh.status==='open'?'#6ee7b7':'#9ca3af' }}>
-                          {sh.status==='open'?'🟢 مفتوح':'🔴 مغلق'}
-                        </span>
-                      </div>
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, fontSize:11 }}>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>طلبات</div>
-                          <div style={{ fontWeight:700, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{sm.total}</div>
-                        </div>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>تسليم</div>
-                          <div style={{ fontWeight:700, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{sm.delivered}</div>
-                        </div>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>إيرادات</div>
-                          <div style={{ fontWeight:700, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(sm.revenue)}</div>
-                        </div>
-                      </div>
-                      <div style={{ marginTop:8, fontSize:10, color:'rgba(255,255,255,.3)', display:'flex', justifyContent:'space-between' }}>
-                        <span>{fmtTime(sh.opened_at)} → {sh.closed_at ? fmtTime(sh.closed_at) : '...'}</span>
-                        <span style={{ color:'#7b9fff' }}>👁 تفاصيل</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+        <SectionTitle>📋 سجل الشفتات ({shifts.length})</SectionTitle>
+        <Tbl cols={['التاريخ','الشفت','الفتح','الإغلاق','طلبات','تسليم','الإيرادات','الحالة','ملاحظات']} rows={
+          shifts.map(s => {
+            const sc_ = STATUS_C[s.status] || '#6b7280'
+            const sc2 = SHIFT_COLOR[s.shift_type] || '#6b7280'
+            const dur  = s.closed_at && s.opened_at ? Math.floor((new Date(s.closed_at)-new Date(s.opened_at))/60000) : null
+            return (
+              <Tr key={s.id}>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace", fontSize:11 }}>{fmtDate(s.date)}</Td>
+                <Td><span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:7, background:sc2+'22', color:sc2 }}>{s.shift_type==='صباحي'?'☀️':'🌙'} {s.shift_type}</span></Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace" }}>{fmtTime(s.opened_at)}</Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontFamily:"'JetBrains Mono',monospace" }}>{s.closed_at ? fmtTime(s.closed_at) : <span style={{ color:'rgba(255,255,255,.2)' }}>—</span>}</Td>
+                <Td style={{ textAlign:'center', fontWeight:700, color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{s.orders_count||0}</Td>
+                <Td style={{ textAlign:'center', color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{s.delivered_count||0}</Td>
+                <Td style={{ fontWeight:700, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(s.revenue)||0} ج</Td>
+                <Td>
+                  <span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:7, background:sc_+'22', color:sc_ }}>
+                    {s.status==='open'?'🟢 مفتوح':'🔴 مغلق'}
+                  </span>
+                  {dur && <div style={{ fontSize:9, color:'rgba(255,255,255,.3)', marginTop:2 }}>{dur}د</div>}
+                </Td>
+                <Td style={{ fontSize:11, color:'rgba(255,255,255,.35)', maxWidth:120 }}>{s.notes||'—'}</Td>
+              </Tr>
+            )
+          })
+        }/>
       </Card>
     </div>
   )
 }
 
-// ══════════════════════════════════════════════════════
-//  NOTIF COUNT
-// ══════════════════════════════════════════════════════
-function notifCount(data) {
-  const { orders, zones, settings, shifts } = data
+
+  const { orders, zones, settings } = data
   const now = new Date(); const today = now.toISOString().slice(0,10)
   const uMin = settings.unassignedAlert||15; const dSLA = settings.defaultSLA||40
   let c = 0
@@ -2476,17 +2670,9 @@ function notifCount(data) {
     }
     if (o.payment_method==='أجل'&&o.due_date&&o.due_date<today&&o.status!=='ملغي') c++
   })
-  const openShift = (shifts||[]).find(s => s.status === 'open' && s.date === today)
-  if (openShift) {
-    const shiftAge = Math.floor((now - new Date(openShift.opened_at)) / 60000)
-    if (shiftAge > 480) c++
-  }
   return c
 }
 
-// ══════════════════════════════════════════════════════
-//  MAIN APP
-// ══════════════════════════════════════════════════════
 export default function DeliverySystem() {
   const { data, loading, refetch, lastUpdate } = useData()
   const [page, setPage]   = useState('home')
@@ -2497,6 +2683,7 @@ export default function DeliverySystem() {
   useEffect(() => { injectStyles() }, [])
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 15000); return () => clearInterval(t) }, [])
 
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       if (e.altKey) {
@@ -2551,7 +2738,11 @@ export default function DeliverySystem() {
     <ToastProvider>
       {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)}/>}
       <div style={{ display:'flex', height:'100vh', overflow:'hidden', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif", background:'#0a0a0f' }}>
+
+        {/* ── SIDEBAR ── */}
         <div style={{ width:sidebarCollapsed?64:220, background:pc, display:'flex', flexDirection:'column', flexShrink:0, overflow:'hidden', transition:'width .3s cubic-bezier(.22,1,.36,1)', borderLeft:'1px solid rgba(255,255,255,.06)' }}>
+
+          {/* Logo */}
           <div style={{ background:'rgba(0,0,0,.35)', padding:`14px ${sidebarCollapsed?12:14}px`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
             <div className="float-anim" style={{ fontSize:28, flexShrink:0 }}>🚚</div>
             {!sidebarCollapsed && (
@@ -2561,6 +2752,8 @@ export default function DeliverySystem() {
               </div>
             )}
           </div>
+
+          {/* Live Stats */}
           {!sidebarCollapsed && (
             <div style={{ padding:'8px 12px', background:'rgba(0,0,0,.2)', flexShrink:0 }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:ua.length>0?5:0 }}>
@@ -2574,6 +2767,8 @@ export default function DeliverySystem() {
               {ua.length > 0 && <div className="urgent-pulse" style={{ background:'rgba(249,115,22,.15)', borderRadius:7, padding:'3px 9px', fontSize:10, color:'#f97316', fontWeight:700, cursor:'pointer' }} onClick={() => setPage('orders')}>⚠ {ua.length} بدون مندوب</div>}
             </div>
           )}
+
+          {/* Nav */}
           <nav style={{ flex:1, overflowY:'auto', padding:sidebarCollapsed?'4px':'6px' }}>
             {GROUPS.map(g => (
               <div key={g.id} style={{ marginBottom:sidebarCollapsed?0:8 }}>
@@ -2595,6 +2790,8 @@ export default function DeliverySystem() {
               </div>
             ))}
           </nav>
+
+          {/* Footer */}
           <div style={{ padding:`10px ${sidebarCollapsed?8:14}px`, background:'rgba(0,0,0,.3)', borderTop:'1px solid rgba(255,255,255,.06)', flexShrink:0 }}>
             {sidebarCollapsed ? (
               <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#3b5bfe)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:13, fontWeight:800, margin:'0 auto' }}>م</div>
@@ -2611,7 +2808,10 @@ export default function DeliverySystem() {
           </div>
         </div>
 
+        {/* ── MAIN AREA ── */}
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+          {/* TOP BAR */}
           <div style={{ background:'rgba(255,255,255,.025)', height:52, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,.06)', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <button onClick={() => setSidebarCollapsed(s=>!s)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.4)', cursor:'pointer', fontSize:18, transition:'color .15s, transform .3s', transform:sidebarCollapsed?'scaleX(-1)':'scaleX(1)', display:'flex', alignItems:'center' }} onMouseEnter={e=>e.currentTarget.style.color='white'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,.4)'}>☰</button>
