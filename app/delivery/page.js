@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 
 // ══════════════════════════════════════════════════════
