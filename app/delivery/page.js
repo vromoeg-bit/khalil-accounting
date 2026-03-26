@@ -2818,43 +2818,7 @@ function DailyShifts({ data, refetch }) {
   )
 }
 
-function notifCount(data) {
-  const { orders, zones, drivers = [], settings } = data
-  const now = new Date()
-  const today = now.toISOString().slice(0,10)
-  const uMin = settings.unassignedAlert || 15
-  const dSLA = settings.defaultSLA || 40
 
-  let c = 0
-
-  orders.forEach(o => {
-    if (!['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) {
-      const age = Math.floor((now - new Date(o.created_at)) / 60000)
-
-      if (!o.driver_id && age >= uMin) c++
-
-      const z = zones.find(z => z.name === o.zone)
-      if (age > ((z?.pricing?.slaMinutes) || dSLA)) c++
-    }
-
-    if (o.payment_method === 'أجل' && o.due_date && o.due_date < today && o.status !== 'ملغي') {
-      c++
-    }
-  })
-
-  zones.forEach(z => {
-    if (z.load === 'ضغط عالي') c++
-  })
-
-  const retCnt = orders.filter(o => o.status === 'مرتجع').length
-  if (retCnt > 0) c++
-
-  drivers.forEach(d => {
-    if (d.status === 'غير متاح') c++
-  })
-
-  return c
-}
 
 // ══════════════════════════════════════════════════════
 //  MAIN APP
