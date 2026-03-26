@@ -402,11 +402,12 @@ function Modal({ onClose, title, children, footer, wide = false }) {
         inset: 0,
         background: 'rgba(15,17,42,0.8)',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: 16,
+        padding: '32px 16px',
         zIndex: 9999,
         backdropFilter: 'blur(4px)',
+        overflowY: 'auto',
       }}
     >
       <div
