@@ -404,7 +404,7 @@ function Modal({ onClose, title, children, footer, wide = false }) {
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: '32px 16px',
+        padding: '40px 16px',
         zIndex: 9999,
         backdropFilter: 'blur(4px)',
         overflowY: 'auto',
@@ -415,7 +415,7 @@ function Modal({ onClose, title, children, footer, wide = false }) {
         style={{
           width: wide ? 'min(980px, 96vw)' : 'min(560px, 96vw)',
           maxWidth: '96vw',
-          maxHeight: 'calc(100vh - 32px)',
+          maxHeight: 'calc(100vh - 80px)',
           background: '#1a1a2e',
           color: 'white',
           borderRadius: 20,
