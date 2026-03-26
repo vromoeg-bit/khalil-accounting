@@ -94,6 +94,8 @@ const SC = {
 }
 const PAY_C = { كاش:'#10b981', فيزا:'#3b82f6', محفظة:'#a855f7', أجل:'#f59e0b' }
 const PAY_ICONS = { كاش:'💵', فيزا:'💳', محفظة:'📱', أجل:'🔖' }
+const isDeliveryOrder = (o) => o.customer_type === 'دليفري'
+const isCustomerOrder = (o) => !isDeliveryOrder(o)
 const ROLES = {
   admin:      { label:'مدير',   color:'#a855f7' },
   supervisor: { label:'مشرف',  color:'#3b5bfe' },
@@ -856,7 +858,9 @@ function Home({ data, setPage }) {
   const unassigned = orders.filter(o => !o.driver_id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
   const revenue    = delivered.reduce((s,o) => s + parseFloat(o.value||0), 0)
   const feeRev     = orders.reduce((s,o) => s + parseFloat(o.delivery_fee||0), 0)
-  const delivRate  = orders.length ? Math.round(delivered.length/orders.length*100) : 0
+const custOrders = orders.filter(isCustomerOrder)
+const delivOrders = orders.filter(isDeliveryOrder)
+const delivRate  = orders.length ? Math.round(delivered.length/orders.length*100) : 0
   const pc = settings.primaryColor || '#1a1d2e'
   const ac = settings.accentColor  || '#c9a227'
 
@@ -906,6 +910,8 @@ function Home({ data, setPage }) {
         <Kpi label="📦 إجمالي الطلبات" value={orders.length} color="#3b5bfe" sparkData={last7} onClick={() => setPage('orders')}/>
         <Kpi label="✅ تم التسليم" value={delivRate+'%'} color="#10b981" sub={`${delivered.length} من ${orders.length}`}/>
         <Kpi label="🚀 في الطريق" value={active.length} color="#a855f7" urgent={active.length > 5}/>
+          <Kpi label="👤 طلبات العملاء" value={custOrders.length} color="#06b6d4"/>
+          <Kpi label="🚚 طلبات الدليفري" value={delivOrders.length} color="#a855f7"/>
         <Kpi label="💰 الإيرادات" value={fmt(revenue)} color="#ca8a04" sub="جنيه مصري"/>
         <Kpi label="🚚 رسوم التوصيل" value={fmt(feeRev)} color="#3b82f6" sub="جنيه مصري"/>
         <Kpi label="↩ مرتجع + ملغي" value={returned.length + cancelled.length} color="#f59e0b"/>
@@ -1000,9 +1006,13 @@ function Orders({ data, refetch, user }) {
   const [fSt,     setFSt]    = useState('')
   const [fZ,      setFZ]     = useState('')
   const [fPay,    setFPay]   = useState('')
+  const [fType,   setFType]  = useState('')
+
   const [modal,   setModal]  = useState(null)
   const [conf,    setConf]   = useState(null)
   const [invoice, setInvoice]= useState(null)
+  const [tripOpen, setTripOpen] = useState(false)
+  const [tripSeed, setTripSeed] = useState(null)
   const [selected,setSel]    = useState([])
   const [bulkDrv, setBulkDrv]= useState('')
   const [showBulk,setShowBulk]=useState(false)
@@ -1011,11 +1021,12 @@ function Orders({ data, refetch, user }) {
   const { orders, zones, drivers } = data
 
   const list = useMemo(() => orders.filter(o =>
-    (!fSt  || o.status === fSt) &&
-    (!fZ   || o.zone   === fZ)  &&
-    (!fPay || o.payment_method === fPay) &&
-    (!srch || o.customer?.toLowerCase().includes(srch.toLowerCase()) || String(o.id).includes(srch) || o.phone?.includes(srch))
-  ), [orders, fSt, fZ, fPay, srch])
+  (!fSt   || o.status === fSt) &&
+  (!fZ    || o.zone === fZ) &&
+  (!fPay  || o.payment_method === fPay) &&
+  (!fType || o.customer_type === fType) &&
+  (!srch  || o.customer?.toLowerCase().includes(srch.toLowerCase()) || String(o.id).includes(srch) || o.phone?.includes(srch))
+), [orders, fSt, fZ, fPay, fType, srch])
 
   const allSelected = selected.length === list.length && list.length > 0
   const toggleAll   = () => setSel(allSelected ? [] : list.map(o => o.id))
@@ -1070,6 +1081,16 @@ function Orders({ data, refetch, user }) {
       {conf    && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
       {modal   && <OrderModal data={data} order={modal === 'new' ? null : modal} onClose={() => setModal(null)} refetch={refetch}/>}
       {invoice && <InvoiceModal order={invoice} onClose={() => setInvoice(null)}/>}
+        {tripOpen && (
+  <Modal title="🚚 إنشاء مشوار" onClose={() => { setTripOpen(false); setTripSeed(null) }}>
+    <QuickTripForm
+      data={data}
+      seed={tripSeed}
+      onClose={() => { setTripOpen(false); setTripSeed(null) }}
+      refetch={refetch}
+    />
+  </Modal>
+)}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:14 }}>
         <Kpi label="📦 الكل" value={orders.length} color="#3b5bfe"/>
@@ -1097,6 +1118,11 @@ function Orders({ data, refetch, user }) {
         <select value={fPay} onChange={e=>setFPay(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
           <option value=''>كل التحصيل</option>{['كاش','فيزا','محفظة','أجل'].map(m=><option key={m}>{m}</option>)}
         </select>
+        <select value={fType} onChange={e=>setFType(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
+  <option value=''>كل الأنواع</option>
+  <option value='عميل'>عميل</option>
+  <option value='دليفري'>دليفري</option>
+</select>
         <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>{list.length} نتيجة</span>
       </div>
 
@@ -1124,12 +1150,24 @@ function Orders({ data, refetch, user }) {
               <Tr key={o.id} selected={selected.includes(o.id)} hi={payOv?'rgba(245,158,11,.04)':undefined}>
                 <Td><Checkbox checked={selected.includes(o.id)} onChange={() => toggleOne(o.id)}/></Td>
                 <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>#{o.id}</Td>
-                <Td>
-                  <div>
-                    <div style={{ fontWeight:700, color:'white', fontSize:13 }}>{o.customer}</div>
-                    <div style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{o.phone}</div>
-                  </div>
-                </Td>
+               <Td>
+  <div>
+    <div style={{ fontWeight:700, color:'white', fontSize:13 }}>{o.customer}</div>
+    <div style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{o.phone}</div>
+    <div style={{ marginTop:4 }}>
+      <span style={{
+        fontSize:10,
+        fontWeight:700,
+        padding:'2px 8px',
+        borderRadius:7,
+        background:isDeliveryOrder(o) ? 'rgba(168,85,247,.16)' : 'rgba(6,182,212,.16)',
+        color:isDeliveryOrder(o) ? '#d8b4fe' : '#67e8f9'
+      }}>
+        {o.customer_type || 'عميل'}
+      </span>
+    </div>
+  </div>
+</Td>
                 <Td style={{ color:'rgba(255,255,255,.5)', fontSize:12 }}>{o.zone}</Td>
                 <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(o.value)} ج</Td>
                 <Td>
@@ -1149,11 +1187,26 @@ function Orders({ data, refetch, user }) {
                 <Td style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{fmtRelative(o.created_at)}</Td>
                 <Td>
                   <div style={{ display:'flex', gap:4 }}>
-                    <Btn onClick={() => setExpId(isExp?null:o.id)} small color="rgba(59,91,254,.4)" title="التفاصيل">👁</Btn>
-                    <Btn onClick={() => setInvoice(o)} small color="#10b981" title="فاتورة">🧾</Btn>
-                    {can(user,'orders_w') && <Btn onClick={() => setModal(o)} small color="#6b7280" title="تعديل">✏</Btn>}
-                    {can(user,'orders_w') && <Btn onClick={() => setConf({ msg:`حذف الطلب #${o.id}؟`, ok:() => deleteOrder(o.id) })} small color="#ef4444" title="حذف">🗑</Btn>}
-                  </div>
+  <Btn onClick={() => setExpId(isExp?null:o.id)} small color="rgba(59,91,254,.4)" title="التفاصيل">👁</Btn>
+  <Btn onClick={() => setInvoice(o)} small color="#10b981" title="فاتورة">🧾</Btn>
+
+  {can(user,'trips_w') && isDeliveryOrder(o) && (
+    <Btn
+      onClick={() => {
+        setTripSeed(o)
+        setTripOpen(true)
+      }}
+      small
+      color="#a855f7"
+      title="إنشاء مشوار"
+    >
+      🚚
+    </Btn>
+  )}
+
+  {can(user,'orders_w') && <Btn onClick={() => setModal(o)} small color="#6b7280" title="تعديل">✏</Btn>}
+  {can(user,'orders_w') && <Btn onClick={() => setConf({ msg:`حذف الطلب #${o.id}؟`, ok:() => deleteOrder(o.id) })} small color="#ef4444" title="حذف">🗑</Btn>}
+</div>
                 </Td>
               </Tr>,
               isExp && (
@@ -1294,6 +1347,194 @@ function OrderModal({ data, order, onClose, refetch }) {
   )
 }
 
+function QuickTripForm({ data, seed, onClose, refetch }) {
+  const zoneMatch = data.zones.find(z => z.name === seed?.zone)
+
+  const [f, sF] = useState({
+    driver_id: seed?.driver_id || '',
+    zone_id: zoneMatch?.id || '',
+    wave: 'الموجة ١',
+    status: 'معلقة',
+    distance: 0,
+    time_mins: 0,
+    is_external: isDeliveryOrder(seed),
+    external_notes: seed ? `مشوار من الطلب #${seed.id} - ${seed.customer}` : '',
+    external_cost: 0,
+  })
+
+  const [err, sE] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const set = k => v => sF(p => ({ ...p, [k]: v }))
+
+  const save = async () => {
+    if (!f.driver_id) { sE('اختر المندوب'); return }
+    if (!f.zone_id) { sE('اختر المنطقة'); return }
+
+    setSaving(true)
+    sE('')
+
+    const payload = {
+      driver_id: parseInt(f.driver_id),
+      zone_id: parseInt(f.zone_id),
+      wave: f.wave || 'الموجة ١',
+      status: f.status || 'معلقة',
+      distance: parseFloat(f.distance) || 0,
+      time_mins: parseInt(f.time_mins) || 0,
+      is_external: !!f.is_external,
+      external_notes: f.external_notes || '',
+      external_cost: parseFloat(f.external_cost) || 0,
+      created_at: new Date().toISOString(),
+    }
+
+    const tripRes = await supabase.from('delivery_trips').insert([payload])
+
+    if (tripRes.error) {
+      sE('خطأ إنشاء المشوار: ' + tripRes.error.message)
+      setSaving(false)
+      return
+    }
+
+    if (seed?.id) {
+      const nextStatus =
+        ['استُلم الطلب', 'قيد التحضير', 'جاهز للشحن'].includes(seed.status)
+          ? 'تم تعيين المندوب'
+          : seed.status
+
+      const orderRes = await supabase
+        .from('delivery_orders')
+        .update({
+          driver_id: parseInt(f.driver_id),
+          status: nextStatus,
+        })
+        .eq('id', seed.id)
+
+      if (orderRes.error) {
+        sE('تم إنشاء المشوار لكن فشل تحديث الطلب: ' + orderRes.error.message)
+        setSaving(false)
+        return
+      }
+    }
+
+    toast.success('تم إنشاء المشوار بنجاح')
+    setSaving(false)
+    onClose()
+    refetch()
+  }
+
+  return (
+    <div>
+      <Err msg={err}/>
+
+      <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:12, padding:12, marginBottom:14 }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'white', marginBottom:8 }}>بيانات الطلب</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:10, fontSize:12 }}>
+          <div>
+            <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>رقم الطلب</div>
+            <div style={{ color:'#7b9fff', fontWeight:800 }}>#{seed?.id}</div>
+          </div>
+          <div>
+            <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>العميل</div>
+            <div style={{ color:'white', fontWeight:700 }}>{seed?.customer || '—'}</div>
+          </div>
+          <div>
+            <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>المنطقة</div>
+            <div style={{ color:'rgba(255,255,255,.7)', fontWeight:700 }}>{seed?.zone || '—'}</div>
+          </div>
+          <div>
+            <div style={{ color:'rgba(255,255,255,.35)', marginBottom:2 }}>نوع الطلب</div>
+            <div style={{ color:isDeliveryOrder(seed) ? '#d8b4fe' : '#7dd3fc', fontWeight:800 }}>
+              {seed?.customer_type || 'عميل'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+        <Fld label="المندوب" required>
+          <Sel
+            value={f.driver_id || ''}
+            onChange={set('driver_id')}
+            options={[{ v:'', l:'اختر المندوب' }, ...data.drivers.map(d => ({ v:d.id, l:d.name }))]}
+          />
+        </Fld>
+
+        <Fld label="المنطقة" required>
+          <Sel
+            value={f.zone_id || ''}
+            onChange={set('zone_id')}
+            options={[{ v:'', l:'اختر المنطقة' }, ...data.zones.map(z => ({ v:z.id, l:z.name }))]}
+          />
+        </Fld>
+
+        <Fld label="الموجة">
+          <Sel
+            value={f.wave}
+            onChange={set('wave')}
+            options={['الموجة ١','الموجة ٢','الموجة ٣','الموجة ٤'].map(v => ({ v, l:v }))}
+          />
+        </Fld>
+
+        <Fld label="الحالة">
+          <Sel
+            value={f.status}
+            onChange={set('status')}
+            options={['نشطة','معلقة','مكتملة','ملغية'].map(v => ({ v, l:v }))}
+          />
+        </Fld>
+
+        <Fld label="المسافة (كم)">
+          <Inp type="number" value={f.distance} onChange={set('distance')} suffix="كم"/>
+        </Fld>
+
+        <Fld label="الوقت (دقيقة)">
+          <Inp type="number" value={f.time_mins} onChange={set('time_mins')} suffix="د"/>
+        </Fld>
+      </div>
+
+      <div
+        onClick={() => set('is_external')(!f.is_external)}
+        style={{
+          display:'flex',
+          alignItems:'center',
+          gap:10,
+          padding:'10px 14px',
+          background:f.is_external ? 'rgba(168,85,247,.1)' : 'rgba(255,255,255,.04)',
+          border:`1px solid ${f.is_external ? 'rgba(168,85,247,.3)' : 'rgba(255,255,255,.08)'}`,
+          borderRadius:10,
+          marginBottom:f.is_external ? 10 : 16,
+          cursor:'pointer',
+          transition:'all .2s'
+        }}
+      >
+        <Checkbox checked={f.is_external} onChange={() => set('is_external')(!f.is_external)}/>
+        <span style={{ fontSize:13, fontWeight:700, color:f.is_external ? '#d8b4fe' : 'rgba(255,255,255,.7)' }}>
+          🚗 مشوار خارجي
+        </span>
+      </div>
+
+      {f.is_external && (
+        <div style={{ background:'rgba(168,85,247,.07)', border:'1px solid rgba(168,85,247,.2)', borderRadius:10, padding:14, marginBottom:14 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+            <Fld label="تكلفة المشوار (ج)">
+              <Inp type="number" value={f.external_cost} onChange={set('external_cost')} suffix="ج"/>
+            </Fld>
+
+            <Fld label="ملاحظات المشوار">
+              <Inp value={f.external_notes} onChange={set('external_notes')} placeholder="وصف أو وجهة المشوار..."/>
+            </Fld>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:10 }}>
+        <Btn onClick={save} color="#a855f7" loading={saving}>🚚 حفظ المشوار</Btn>
+        <Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn>
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════
 //  ANALYTICS PAGE
 // ══════════════════════════════════════════════════════
@@ -1301,7 +1542,9 @@ function Analytics({ data }) {
   const { orders, drivers, zones } = data
   const delivered = orders.filter(o => o.status === 'تم التسليم')
   const returned  = orders.filter(o => o.status === 'مرتجع')
-  const revenue   = delivered.reduce((s,o) => s+parseFloat(o.value||0),0)
+ const revenue   = delivered.reduce((s,o) => s+parseFloat(o.value||0),0)
+const custOrders = orders.filter(isCustomerOrder)
+const delivOrders = orders.filter(isDeliveryOrder)
 
   const byZone = zones.map(z => ({ l:z.name.slice(0,6), v:orders.filter(o=>o.zone===z.name).length, color:z.color||'#3b5bfe' })).sort((a,b)=>b.v-a.v).slice(0,8)
 
@@ -1328,6 +1571,8 @@ function Analytics({ data }) {
         <Kpi label="📊 معدل التسليم" value={delivered.length?Math.round(delivered.length/orders.length*100):0} color="#10b981" sub="بالمئة"/>
         <Kpi label="❌ معدل الفشل" value={failRate} color="#ef4444" sub="بالمئة"/>
         <Kpi label="↩ معدل المرتجع" value={retRate} color="#f59e0b" sub="بالمئة"/>
+        <Kpi label="👤 طلبات عملاء" value={custOrders.length} color="#06b6d4"/>
+        <Kpi label="🚚 طلبات دليفري" value={delivOrders.length} color="#a855f7"/>
         <Kpi label="🏍 متوسط طلبات/سائق" value={drivers.length?Math.round(orders.length/drivers.length):0} color="#3b5bfe"/>
         <Kpi label="⭐ متوسط التقييم" value={(drivers.reduce((a,b)=>a+(b.rating||0),0)/Math.max(drivers.length,1)).toFixed(1)} color="#f59e0b"/>
       </div>
@@ -1901,7 +2146,9 @@ function Report({ data }) {
   const cancelled  = orders.filter(o=>o.status==='ملغي')
   const revenue    = delivered.reduce((s,o)=>s+parseFloat(o.value||0),0)
   const feeRev     = orders.reduce((s,o)=>s+parseFloat(o.delivery_fee||0),0)
-  const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.due_date<today&&o.status!=='ملغي')
+const custOrders = orders.filter(isCustomerOrder)
+const delivOrders = orders.filter(isDeliveryOrder)
+const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.due_date<today&&o.status!=='ملغي')
 
   const extTrips       = (trips||[]).filter(t => t.is_external)
   const extTotalCost   = extTrips.reduce((s,t) => s+parseFloat(t.external_cost||0), 0)
@@ -1944,6 +2191,8 @@ function Report({ data }) {
         <Kpi label="✅ تسليم" value={`${delivered.length} (${orders.length?Math.round(delivered.length/orders.length*100):0}%)`} color="#10b981"/>
         <Kpi label="💰 إيرادات" value={fmt(revenue)+' ج'} color="#ca8a04"/>
         <Kpi label="🚚 رسوم توصيل" value={fmt(feeRev)+' ج'} color="#a855f7"/>
+        <Kpi label="👤 طلبات عملاء" value={custOrders.length} color="#06b6d4"/>
+        <Kpi label="🚚 طلبات دليفري" value={delivOrders.length} color="#a855f7"/>
         <Kpi label="↩ مرتجعات" value={returned.length} color="#f59e0b"/>
         <Kpi label="❌ ملغاة" value={cancelled.length} color="#6b7280"/>
         <Kpi label="⚠ آجل متأخر" value={overdue.length} color={overdue.length>0?'#ef4444':'#6b7280'} urgent={overdue.length>0}/>
