@@ -1135,38 +1135,94 @@ function OrderModal({ data, order, onClose, refetch }) {
   const fee = calcFee(data.zones, f.zone, f.value, f.no_fee)
 
   const save = async () => {
-    if (!f.customer?.trim() || !f.zone || !f.value) { sE('يجب ملء الحقول المطلوبة (العميل، المنطقة، القيمة)'); return }
-    if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) {
-  sE('يجب كتابة سبب فشل التسليم')
-  return
-}
-
-if (f.status === 'ملغي' && !f.cancel_reason?.trim()) {
-  sE('يجب كتابة سبب الإلغاء')
-  return
-}
-
-if (f.status === 'مرتجع' && !f.return_reason?.trim()) {
-  sE('يجب كتابة سبب المرتجع')
-  return
-}
-
-    setSaving(true); sE('')
-    const payload = {
-      customer: f.customer.trim(), phone: f.phone||'', address: f.address||'', zone: f.zone,
-      value: parseFloat(f.value)||0, driver_id: f.driver_id ? parseInt(f.driver_id) : null,
-      delivery_fee: fee, products: JSON.stringify(f.products), status: f.status,
-      notes: f.notes||'', customer_type: f.customer_type||'عميل', payment_method: f.payment_method||'كاش',
-      due_date: f.due_date||null, no_fee: f.no_fee||false, fail_reason: f.fail_reason||'',
-      cancel_reason: f.cancel_reason||'', return_reason: f.return_reason||'',
+    // ✅ تحقق من البيانات الأساسية أولاً
+    if (!f.customer?.trim()) { 
+      sE('❌ يجب ملء اسم العميل'); 
+      return 
     }
-    let result
-    if (order) result = await supabase.from('delivery_orders').update(payload).eq('id', order.id)
-    else       result = await supabase.from('delivery_orders').insert([payload])
-    setSaving(false)
-    if (result.error) { sE('❌ خطأ: ' + result.error.message); return }
-    toast.success(order ? 'تم تعديل الطلب' : 'تم إضافة الطلب')
-    onClose(); refetch()
+    if (!f.zone) { 
+      sE('❌ يجب اختيار المنطقة'); 
+      return 
+    }
+    if (!f.value || parseFloat(f.value) <= 0) { 
+      sE('❌ يجب ملء القيمة (أكبر من صفر)'); 
+      return 
+    }
+
+    // ✅ تحقق من الأسباب إذا لزم الأمر
+    if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) {
+      sE('❌ يجب كتابة سبب فشل التسليم')
+      return
+    }
+    if (f.status === 'ملغي' && !f.cancel_reason?.trim()) {
+      sE('❌ يجب كتابة سبب الإلغاء')
+      return
+    }
+    if (f.status === 'مرتجع' && !f.return_reason?.trim()) {
+      sE('❌ يجب كتابة سبب المرتجع')
+      return
+    }
+
+    setSaving(true)
+    sE('')
+
+    // ✅ استخدم try-catch للتعامل مع الأخطاء
+    try {
+      const payload = {
+        customer: f.customer.trim(),
+        phone: f.phone || '',
+        address: f.address || '',
+        zone: f.zone,
+        value: parseFloat(f.value) || 0,
+        driver_id: f.driver_id ? parseInt(f.driver_id) : null,
+        delivery_fee: fee,
+        products: JSON.stringify(f.products),
+        status: f.status,
+        notes: f.notes || '',
+        customer_type: f.customer_type || 'عميل',
+        payment_method: f.payment_method || 'كاش',
+        due_date: f.due_date || null,
+        no_fee: f.no_fee || false,
+        fail_reason: f.fail_reason || '',
+        cancel_reason: f.cancel_reason || '',
+        return_reason: f.return_reason || '',
+      }
+
+      let result
+
+      if (order) {
+        // ✅ تحديث طلب موجود
+        result = await supabase
+          .from('delivery_orders')
+          .update(payload)
+          .eq('id', order.id)
+      } else {
+        // ✅ إضافة طلب جديد
+        result = await supabase
+          .from('delivery_orders')
+          .insert([{
+            ...payload,
+            created_at: new Date().toISOString()
+          }])
+      }
+
+      if (result.error) {
+        console.error('Supabase Error:', result.error)
+        sE(`❌ خطأ Supabase: ${result.error.message}`)
+        setSaving(false)
+        return
+      }
+
+      // ✅ نجاح العملية
+      toast.success(order ? '✅ تم تعديل الطلب بنجاح' : '✅ تم إضافة الطلب بنجاح')
+      setSaving(false)
+      onClose()
+      refetch()
+    } catch (exception) {
+      console.error('Exception:', exception)
+      sE(`❌ خطأ: ${exception.message}`)
+      setSaving(false)
+    }
   }
 
   return (
@@ -1202,11 +1258,13 @@ if (f.status === 'مرتجع' && !f.return_reason?.trim()) {
       </div>
 
       {f.status === 'فشل التسليم' && <Fld label="سبب الفشل"><Inp value={f.fail_reason} onChange={set('fail_reason')}/></Fld>}
-      {f.status === 'ملغي'        && <Fld label="سبب الإلغاء"><Inp value={f.cancel_reason} onChange={set('cancel_reason')}/></Fld>}
-      {f.status === 'مرتجع'       && <Fld label="سبب المرتجع"><Inp value={f.return_reason} onChange={set('return_reason')}/></Fld>}
+      {f.status === 'ملغي' && <Fld label="سبب الإلغاء"><Inp value={f.cancel_reason} onChange={set('cancel_reason')}/></Fld>}
+      {f.status === 'مرتجع' && <Fld label="سبب المرتجع"><Inp value={f.return_reason} onChange={set('return_reason')}/></Fld>}
+      
       <Fld label="ملاحظات">
         <textarea value={f.notes||''} onChange={e=>set('notes')(e.target.value)} style={{ width:'100%', minHeight:55, padding:'9px 13px', background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, fontFamily:'inherit', direction:'rtl', resize:'vertical' }}/>
       </Fld>
+
       <div style={{ display:'flex', gap:10 }}>
         <Btn onClick={save} color="#3b5bfe" loading={saving}>💾 {order ? 'حفظ التعديلات' : 'إضافة الطلب'}</Btn>
         <Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn>
