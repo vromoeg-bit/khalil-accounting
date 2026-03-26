@@ -535,6 +535,7 @@ function Modal({ title, onClose, children, footer, wide }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 9998, backdropFilter: 'blur(6px)',
         padding: '16px',
+        overflowY: 'auto',
       }}
     >
       <div
@@ -549,6 +550,8 @@ function Modal({ title, onClose, children, footer, wide }) {
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
           overflow: 'visible',
+          marginTop: 'auto',
+          marginBottom: 'auto',
         }}
       >
         <div style={{
