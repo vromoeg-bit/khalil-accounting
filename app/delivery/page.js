@@ -392,99 +392,42 @@ const Card = ({ children, style: s = {}, glass, neon }) => (
   <div style={{ background:glass?'rgba(255,255,255,.03)':'rgba(255,255,255,.04)', border:`1px solid ${neon?'rgba(59,91,254,.25)':'rgba(255,255,255,.07)'}`, borderRadius:14, padding:18, marginBottom:14, backdropFilter:glass?'blur(10px)':'none', boxShadow:neon?'0 0 20px rgba(59,91,254,.1)':'none', ...s }}>{children}</div>
 )
 
-// ✅ FIX #3: Modal no longer accepts unused `open` prop — rendering is controlled by parent
-function Modal({ onClose, title, children, footer, wide = false }) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15,17,42,0.8)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px 16px',
-        zIndex: 9999,
-        backdropFilter: 'blur(4px)',
-        overflowY: 'auto',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: wide ? 'min(980px, 96vw)' : 'min(560px, 96vw)',
-          maxWidth: '96vw',
-          maxHeight: 'calc(100vh - 40px)',
-          background: '#1a1a2e',
-          color: 'white',
-          borderRadius: 20,
-          boxShadow: '0 20px 70px rgba(0,0,0,.5), 0 0 40px rgba(59,91,254,.2)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid rgba(59,91,254,.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexShrink: 0,
-            background: 'rgba(59,91,254,.05)',
-          }}
-        >
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'white' }}>
-            {title}
-          </div>
+function notifCount(data) {
+  const { orders, zones, drivers = [], settings } = data
+  const now = new Date()
+  const today = now.toISOString().slice(0,10)
+  const uMin = settings.unassignedAlert || 15
+  const dSLA = settings.defaultSLA || 40
 
-          <button
-            onClick={onClose}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              fontSize: 24,
-              cursor: 'pointer',
-              lineHeight: 1,
-              color: 'rgba(255,255,255,.5)',
-              transition: 'color .15s',
-            }}
-            onMouseEnter={e => e.target.style.color = '#ef4444'}
-            onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,.5)'}
-          >
-            ×
-          </button>
-        </div>
+  let c = 0
 
-        <div
-          style={{
-            padding: 20,
-            overflowY: 'auto',
-            overflowX: 'auto',
-            flex: 1,
-          }}
-        >
-          {children}
-        </div>
+  orders.forEach(o => {
+    if (!['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) {
+      const age = Math.floor((now - new Date(o.created_at)) / 60000)
 
-        {footer ? (
-          <div
-            style={{
-              padding: 16,
-              borderTop: '1px solid rgba(59,91,254,.2)',
-              flexShrink: 0,
-              background: 'rgba(0,0,0,.2)',
-            }}
-          >
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
+      if (!o.driver_id && age >= uMin) c++
+
+      const z = zones.find(z => z.name === o.zone)
+      if (age > ((z?.pricing?.slaMinutes) || dSLA)) c++
+    }
+
+    if (o.payment_method === 'أجل' && o.due_date && o.due_date < today && o.status !== 'ملغي') {
+      c++
+    }
+  })
+
+  zones.forEach(z => {
+    if (z.load === 'ضغط عالي') c++
+  })
+
+  const retCnt = orders.filter(o => o.status === 'مرتجع').length
+  if (retCnt > 0) c++
+
+  drivers.forEach(d => {
+    if (d.status === 'غير متاح') c++
+  })
+
+  return c
 }
 
 // ══════════════════════════════════════════════════════
