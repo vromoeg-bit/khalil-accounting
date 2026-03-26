@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 
 // ══════════════════════════════════════════════════════
@@ -155,9 +156,20 @@ const parseProducts = (p) => {
 
 const exportCSV = (rows, cols, filename) => {
   const header = cols.join(',')
-  const body   = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
-  const blob   = new Blob(['\uFEFF' + header + '\n' + body], { type:'text/csv;charset=utf-8;' })
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click()
+  const body = rows
+    .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  const blob = new Blob(['\uFEFF' + header + '\n' + body], {
+    type:'text/csv;charset=utf-8;'
+  })
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ══════════════════════════════════════════════════════
@@ -358,22 +370,91 @@ const Card = ({ children, style: s = {}, glass, neon }) => (
   <div style={{ background:glass?'rgba(255,255,255,.03)':'rgba(255,255,255,.04)', border:`1px solid ${neon?'rgba(59,91,254,.25)':'rgba(255,255,255,.07)'}`, borderRadius:14, padding:18, marginBottom:14, backdropFilter:glass?'blur(10px)':'none', boxShadow:neon?'0 0 20px rgba(59,91,254,.1)':'none', ...s }}>{children}</div>
 )
 
-const Modal = ({ title, onClose, children, wide, extra }) => (
-  <div onClick={e => e.target === e.currentTarget && onClose()}
-    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', display:'flex', alignItems:'flex-start', justifyContent:'center', zIndex:1000, padding:'16px 12px', backdropFilter:'blur(4px)', animation:'fadeIn .2s ease', overflowY:'auto' }}>
-    <div className="modal-enter" style={{ background:'#0d1018', border:'1px solid rgba(255,255,255,.1)', borderRadius:18, width:wide?740:560, maxWidth:'98vw', flexShrink:0, boxShadow:'0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(59,91,254,.15)', margin:'auto' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 20px', borderBottom:'1px solid rgba(255,255,255,.07)', position:'sticky', top:0, background:'#0d1018', zIndex:1, backdropFilter:'blur(10px)', borderRadius:'18px 18px 0 0' }}>
-        <span style={{ fontSize:15, fontWeight:800, color:'white' }}>{title}</span>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          {extra}
-          <button onClick={onClose} style={{ width:30, height:30, borderRadius:9, border:'none', background:'rgba(255,255,255,.07)', cursor:'pointer', fontSize:14, color:'rgba(255,255,255,.6)', transition:'background .15s' }}
-            onMouseEnter={e => e.target.style.background='rgba(239,68,68,.2)'} onMouseLeave={e => e.target.style.background='rgba(255,255,255,.07)'}>✕</button>
+const Modal = ({ title, onClose, children, wide, extra }) => {
+  if (typeof window === 'undefined') return null
+
+  return createPortal(
+    <div
+      onClick={e => e.target === e.currentTarget && onClose()}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,.82)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 999999,
+        padding: '20px',
+        backdropFilter: 'blur(4px)'
+      }}
+    >
+      <div
+        className="modal-enter"
+        style={{
+          background: '#0d1018',
+          border: '1px solid rgba(255,255,255,.1)',
+          borderRadius: 18,
+          width: wide ? 'min(820px, 96vw)' : 'min(620px, 96vw)',
+          maxHeight: '92vh',
+          overflow: 'hidden',
+          boxShadow: '0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(59,91,254,.15)',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 20px',
+            borderBottom: '1px solid rgba(255,255,255,.07)',
+            background: '#0d1018',
+            flexShrink: 0
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>
+            {title}
+          </span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {extra}
+            <button
+              onClick={onClose}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 9,
+                border: 'none',
+                background: 'rgba(255,255,255,.07)',
+                cursor: 'pointer',
+                fontSize: 14,
+                color: 'rgba(255,255,255,.6)'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 20,
+            overflowY: 'auto',
+            flex: 1,
+            minHeight: 0
+          }}
+        >
+          {children}
         </div>
       </div>
-      <div style={{ padding:20 }}>{children}</div>
-    </div>
-  </div>
-)
+    </div>,
+    document.body
+  )
+}
 
 const Confirm = ({ msg, onOk, onCancel, danger = true }) => (
   <Modal title="تأكيد العملية" onClose={onCancel}>
@@ -473,11 +554,25 @@ const Checkbox = ({ checked, onChange }) => (
 //  DATA HOOK
 // ══════════════════════════════════════════════════════
 function useData() {
-  const [data, setData] = useState({ orders:[], drivers:[], zones:[], vehicles:[], trips:[], users:[], settings:{}, shifts:[] })
+  const [data, setData] = useState({
+    orders:[],
+    drivers:[],
+    zones:[],
+    vehicles:[],
+    trips:[],
+    users:[],
+    settings:{},
+    shifts:[]
+  })
+
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
+
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+
     const [ord, drv, zon, veh, trp, usr, set, shf] = await Promise.all([
       supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
       supabase.from('delivery_drivers').select('*'),
@@ -488,26 +583,49 @@ function useData() {
       supabase.from('delivery_settings').select('*').single(),
       supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
     ])
-    setData({
-      orders:   ord.data  || [],
-      drivers:  drv.data  || [],
-      zones:    zon.data  || [],
-      vehicles: veh.data  || [],
-      trips:    trp.data  || [],
-      users:    usr.data  || [],
-      settings: set.data  || { companyName:'دليفري خليل الحلواني', unassignedAlert:15, defaultSLA:40 },
-      shifts:   shf.data  || [],
-    })
-    setLastUpdate(new Date())
-    setLoading(false)
+
+    if (ord.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error) {
+      console.error('Supabase error:', {
+        ord: ord.error,
+        drv: drv.error,
+        zon: zon.error,
+        veh: veh.error,
+        trp: trp.error,
+        usr: usr.error,
+        set: set.error,
+        shf: shf.error
+      })
+      toast.error('حصل خطأ أثناء تحميل البيانات')
+    } else {
+      setData({
+        orders: ord.data || [],
+        drivers: drv.data || [],
+        zones: zon.data || [],
+        vehicles: veh.data || [],
+        trips: trp.data || [],
+        users: usr.data || [],
+        settings: set.data || {
+          companyName:'دليفري خليل الحلواني',
+          unassignedAlert:15,
+          defaultSLA:40
+        },
+        shifts: shf.data || [],
+      })
+      setLastUpdate(new Date())
+    }
+
+    if (isRefresh) setRefreshing(false)
+    else setLoading(false)
   }, [])
-  useEffect(() => { fetchAll() }, [fetchAll])
-  // auto-refresh every 60s
+
+  useEffect(() => { fetchAll(false) }, [fetchAll])
+
   useEffect(() => {
-    const t = setInterval(fetchAll, 60000)
+    const t = setInterval(() => fetchAll(true), 60000)
     return () => clearInterval(t)
   }, [fetchAll])
-  return { data, loading, refetch: fetchAll, lastUpdate }
+
+  return { data, loading, refreshing, refetch: () => fetchAll(true), lastUpdate }
 }
 
 // ══════════════════════════════════════════════════════
@@ -610,7 +728,7 @@ function InvoiceModal({ order, onClose }) {
           <div style={{ fontSize:18, fontWeight:900, color:'white' }}>فاتورة توصيل</div>
           <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3, fontFamily:"'JetBrains Mono',monospace" }}>#{String(order.id).padStart(6,'0')}</div>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, marginBottom:16 }}>
           {[['العميل',order.customer,'white'],['التليفون',order.phone||'—','rgba(255,255,255,.6)'],['العنوان',order.address||'—','rgba(255,255,255,.6)'],['المنطقة',order.zone,'#7b9fff'],['التاريخ',fmtDate(order.created_at),'rgba(255,255,255,.6)'],['الوقت',fmtTime(order.created_at),'rgba(255,255,255,.6)']].map(([l,v,c]) => (
             <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:9, padding:'10px 13px' }}>
               <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginBottom:3 }}>{l}</div>
@@ -732,7 +850,7 @@ function Home({ data, setPage }) {
         {/* Status Distribution */}
         <Card>
           <SectionTitle>📦 توزيع حالات الطلبات</SectionTitle>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:10 }}>
             {ALL_STATUS.map(s => {
               const cnt = orders.filter(o => o.status === s).length
               const sc_ = SC[s] || {}
@@ -1015,7 +1133,7 @@ function OrderModal({ data, order, onClose, refetch }) {
   return (
     <Modal title={order ? '✏ تعديل الطلب' : '➕ طلب جديد'} onClose={onClose} wide>
       <Err msg={err}/>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
         <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
         <Fld label="العنوان"><Inp value={f.address} onChange={set('address')} prefix="📍"/></Fld>
@@ -1116,7 +1234,7 @@ function Analytics({ data }) {
         </Card>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>🏆 أفضل المندوبين</SectionTitle>
           {topDrivers.map((d,i) => (
@@ -1213,7 +1331,7 @@ function Drivers({ data, refetch, user }) {
               </div>
               {/* Stats */}
               <div style={{ padding:'12px 16px' }}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8, marginBottom:10 }}>
                   {[[d.orders||0,'طلب','white'],[d.delivered||0,'تسليم','#10b981'],[d.on_time_rate||0+'%','التزام',d.on_time_rate>85?'#10b981':'#f59e0b'],[fmt(d.earnings),'أرباح ج','#fcd34d']].map(([v,l,c])=>(
                     <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'7px 10px' }}>
                       <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', marginBottom:2 }}>{l}</div>
@@ -1262,7 +1380,7 @@ function DriverForm({ data, driver, onClose, refetch }) {
   return (
     <div>
       <Err msg={err}/>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="الاسم" required><Inp value={f.name} onChange={set('name')} prefix="👤"/></Fld>
         <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
         <Fld label="المركبة"><Sel value={f.vehicle_id||''} onChange={set('vehicle_id')} options={data.vehicles.map(v=>({v:v.id,l:`${v.icon} ${v.name}`}))}/></Fld>
@@ -1318,7 +1436,7 @@ function Zones({ data, refetch }) {
                   <span style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>طاقة: {Math.round(cap)}%</span>
                 </div>
                 <div style={{ marginBottom:10 }}><BarMini val={cap} max={100} color={cap>80?'#ef4444':cap>60?'#f59e0b':'#10b981'}/></div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8 }}>
                   {[['📦 طلبات',z.orders||0,z.color],['🏍 مندوبين',z.drivers||0,'#6b7280'],['⏱ وقت',(z.avg_time||0)+'د','#a855f7'],['📐 طاقة',z.max_capacity||0,'rgba(255,255,255,.5)']].map(([l,v,cl])=>(
                     <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'7px 10px' }}>
                       <div style={{ fontSize:9, color:'rgba(255,255,255,.35)' }}>{l}</div>
@@ -1365,9 +1483,9 @@ function ZoneModal({ zone, onClose, refetch }) {
     onClose(); refetch()
   }
   return (
-    <Modal title={zone?`✏ تعديل: ${zone.name}`:'➕ منطقة جديدة'} onClose={onClose}>
+    <Modal title={zone?`✏ تعديل: ${zone.name}`:'➕ منطقة جديدة'} onClose={onClose} wide>
       <Err msg={err}/>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="الاسم" required><Inp value={f.name} onChange={set('name')}/></Fld>
         <Fld label="مستوى الضغط"><Sel value={f.load} onChange={set('load')} options={['عادي','ضغط متوسط','ضغط عالي'].map(v=>({v,l:v}))}/></Fld>
         <Fld label="الطاقة القصوى"><Inp type="number" value={f.max_capacity} onChange={set('max_capacity')}/></Fld>
@@ -1382,7 +1500,7 @@ function ZoneModal({ zone, onClose, refetch }) {
       </Fld>
       <div style={{ borderTop:'1px solid rgba(255,255,255,.07)', paddingTop:14, marginBottom:12 }}>
         <div style={{ fontWeight:800, marginBottom:10, color:'white', fontSize:13 }}>💰 إعدادات التسعير</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
           <Fld label="سعر التوصيل (ج)"><Inp type="number" value={f.basePrice} onChange={set('basePrice')} suffix="ج"/></Fld>
           <Fld label="خصم %"><Inp type="number" value={f.discount} onChange={set('discount')} suffix="%"/></Fld>
           <Fld label="مجاني فوق (ج)" hint="صفر = لا يوجد"><Inp type="number" value={f.freeDeliveryFrom} onChange={set('freeDeliveryFrom')} suffix="ج"/></Fld>
@@ -1425,7 +1543,7 @@ function Vehicles({ data, refetch }) {
                 <Btn onClick={() => setConf({ msg:`حذف ${v.name}؟`, ok:() => deleteVeh(v.id) })} small color="#ef4444">🗑</Btn>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:9 }}>
               <div style={{ background:'rgba(59,91,254,.1)', borderRadius:9, padding:'9px 12px' }}>
                 <div style={{ fontSize:10, color:'rgba(255,255,255,.4)' }}>تكلفة/كم</div>
                 <div style={{ fontSize:18, fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>{v.cost_per_km} ج</div>
@@ -1454,7 +1572,7 @@ function VehicleForm({ veh, onClose, refetch }) {
   }
   return (
     <div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="الاسم" required><Inp value={f.name} onChange={set('name')}/></Fld>
         <Fld label="الأيقونة"><Sel value={f.icon} onChange={set('icon')} options={['🏍','🚗','🚲','🛺','🚐','🚚','🛵','🚑'].map(v=>({v,l:v}))}/></Fld>
         <Fld label="تكلفة الكيلو (ج)"><Inp type="number" value={f.cost_per_km} onChange={set('cost_per_km')} suffix="ج"/></Fld>
@@ -1543,7 +1661,7 @@ function TripForm({ data, trip, onClose, refetch }) {
   }
   return (
     <div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="المندوب" required><Sel value={f.driver_id||''} onChange={set('driver_id')} options={data.drivers.map(d=>({v:d.id,l:d.name}))}/></Fld>
         <Fld label="المنطقة" required><Sel value={f.zone_id||''} onChange={set('zone_id')} options={data.zones.map(z=>({v:z.id,l:z.name}))}/></Fld>
         <Fld label="الموجة"><Sel value={f.wave} onChange={set('wave')} options={['الموجة ١','الموجة ٢','الموجة ٣','الموجة ٤'].map(v=>({v,l:v}))}/></Fld>
@@ -1559,7 +1677,7 @@ function TripForm({ data, trip, onClose, refetch }) {
       </div>
       {f.is_external && (
         <div style={{ background:'rgba(168,85,247,.07)', border:'1px solid rgba(168,85,247,.2)', borderRadius:10, padding:14, marginBottom:14, animation:'fadeUp .2s ease' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
             <Fld label="تكلفة المشوار (ج)"><Inp type="number" value={f.external_cost} onChange={set('external_cost')} suffix="ج" prefix="💰"/></Fld>
             <Fld label="ملاحظات المشوار"><Inp value={f.external_notes} onChange={set('external_notes')} placeholder="وجهة المشوار أو سببه..."/></Fld>
           </div>
@@ -1605,7 +1723,7 @@ function Pricing({ data, refetch, user }) {
                     <span style={{ fontWeight:800 }}>{ef.toFixed(1)} ج</span>
                   </div>
                 )}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8 }}>
                   {[['توصيل',(pr.basePrice||0)+' ج',z.color],['خصم',(pr.discount||0)+'%','#f59e0b'],['مجاني فوق',(pr.freeDeliveryFrom||0)+' ج','#10b981'],['أقل طلب',(pr.minOrder||0)+' ج','#f97316'],['SLA',(pr.slaMinutes||40)+' د','#a855f7'],['سعر/كم',(pr.perKm||2)+' ج','#6b7280']].map(([l,v,cl])=>(
                     <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'7px 10px' }}>
                       <div style={{ fontSize:9, color:'rgba(255,255,255,.35)' }}>{l}</div>
@@ -1775,7 +1893,7 @@ function Report({ data }) {
         )}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>💳 توزيع التحصيل</SectionTitle>
           {['كاش','فيزا','محفظة','أجل'].map(m => {
@@ -1939,7 +2057,7 @@ function Settings({ data, refetch }) {
         <SectionTitle>🏢 إعدادات عامة</SectionTitle>
         {ok && <div style={{ background:'rgba(16,185,129,.12)', color:'#6ee7b7', border:'1px solid rgba(16,185,129,.3)', borderRadius:9, padding:'9px 14px', fontSize:13, fontWeight:700, marginBottom:12, animation:'fadeUp .3s ease' }}>✅ تم الحفظ!</div>}
         <Fld label="اسم الشركة"><Inp value={cn} onChange={sCn} prefix="🏢"/></Fld>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
           <Fld label="تنبيه بدون مندوب (دقيقة)"><Inp type="number" value={ua} onChange={sUa} suffix="د"/></Fld>
           <Fld label="SLA الافتراضي (دقيقة)"><Inp type="number" value={sla} onChange={sSla} suffix="د"/></Fld>
         </div>
@@ -1947,7 +2065,7 @@ function Settings({ data, refetch }) {
       </Card>
       <Card>
         <SectionTitle>💾 النسخ الاحتياطي</SectionTitle>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>
           <div style={{ background:'rgba(59,91,254,.07)', borderRadius:12, padding:16, border:'1px solid rgba(59,91,254,.2)' }}>
             <div style={{ fontWeight:800, color:'#7b9fff', marginBottom:6 }}>📤 تصدير</div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginBottom:12 }}>حفظ كل البيانات في ملف JSON</div>
@@ -2058,7 +2176,7 @@ function UserForm({ user_, onClose, refetch }) {
   return (
     <div>
       <Err msg={err}/>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <Fld label="الاسم الكامل" required><Inp value={f.name} onChange={set('name')} prefix="👤"/></Fld>
         <Fld label="اسم المستخدم" required><Inp value={f.username} onChange={set('username')}/></Fld>
         <Fld label={user_?'كلمة المرور (فارغة = بدون تغيير)':'كلمة المرور'} required={!user_}>
@@ -2101,7 +2219,7 @@ function RefreshBar({ lastUpdate, onRefresh }) {
 function ShortcutsModal({ onClose }) {
   return (
     <Modal title="⌨️ اختصارات لوحة المفاتيح" onClose={onClose}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:10 }}>
         {[['Alt+H','الرئيسية'],['Alt+O','الطلبات'],['Alt+D','المندوبين'],['Alt+Z','المناطق'],['Alt+A','التحليلات'],['Alt+N','الإشعارات'],['Alt+R','التقارير'],['Alt+S','الإعدادات'],['Alt+?','هذه القائمة'],['F5','تحديث البيانات']].map(([k,v])=>(
           <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'rgba(255,255,255,.04)', borderRadius:8 }}>
             <span style={{ fontSize:12, fontFamily:"'JetBrains Mono',monospace", background:'rgba(255,255,255,.1)', padding:'2px 8px', borderRadius:6, color:'white', fontSize:11 }}>{k}</span>
@@ -2277,6 +2395,13 @@ function DeliveryTracker({ data, refetch }) {
   const [driverLocs,    setDriverLocs]    = useState({})
   const [selectedDrv,   setSelectedDrv]   = useState(null)
   const [mode,          setMode]          = useState('admin') // 'admin' | 'driver'
+useEffect(() => {
+  return () => {
+    if (gpsWatcher !== null) {
+      navigator.geolocation.clearWatch(gpsWatcher)
+    }
+  }
+}, [gpsWatcher])
 
   // Fetch driver locations from Supabase
   const fetchLocations = useCallback(async () => {
@@ -2533,17 +2658,33 @@ function DailyShifts({ data, refetch }) {
   }
 
   const closeShift = async () => {
-    if (!openShift) return
-    setClose(true)
-    const res = await supabase.from('delivery_shifts').update({
-      status: 'closed', closed_at: new Date().toISOString(),
-      orders_count: shiftOrders.length, revenue: shiftRevenue,
-      notes: notes || ''
-    }).eq('id', openShift.id)
-    setClose(false); setConf(null)
-    if (res.error) { toast.error('خطأ: ' + res.error.message); return }
-    toast.success('تم غلق الشفت وتسجيل الملخص ✅'); setNotes(''); refetch()
+  if (!openShift) return
+
+  setClose(true)
+
+  const deliveredCount = shiftOrders.filter(o => o.status === 'تم التسليم').length
+
+  const res = await supabase.from('delivery_shifts').update({
+    status: 'closed',
+    closed_at: new Date().toISOString(),
+    orders_count: shiftOrders.length,
+    delivered_count: deliveredCount,
+    revenue: shiftRevenue,
+    notes: notes || ''
+  }).eq('id', openShift.id)
+
+  setClose(false)
+  setConf(null)
+
+  if (res.error) {
+    toast.error('خطأ: ' + res.error.message)
+    return
   }
+
+  toast.success('تم غلق الشفت وتسجيل الملخص ✅')
+  setNotes('')
+  refetch()
+}
 
   const SHIFT_COLOR = { صباحي:'#f59e0b', مسائي:'#3b5bfe' }
   const STATUS_C    = { open:'#10b981', closed:'#6b7280' }
@@ -2584,9 +2725,9 @@ function DailyShifts({ data, refetch }) {
       {/* Open Shift Buttons */}
       <Card neon>
         <div style={{ fontWeight:800, marginBottom:14, color:'white' }}>🟢 فتح شفت جديد</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, marginBottom:14 }}>
           {[['صباحي','☀️ شفت صباحي','06:00 — 14:00',hasM],['مسائي','🌙 شفت مسائي','14:00 — 22:00',hasE]].map(([type,label,time,done]) => (
-            <div key={type} style={{ background:`${done?'rgba(107,114,128,.08)':'rgba(255,255,255,.04)'}`, border:`1px solid ${done?'rgba(107,114,128,.2)':`${SHIFT_COLOR[type]}44`}`, borderRadius:14, padding:16, textAlign:'center', opacity:done&&!openShift?.shift_type===type?.1:1 }}>
+            <div key={type} style={{ background:`${done?'rgba(107,114,128,.08)':'rgba(255,255,255,.04)'}`, border:`1px solid ${done?'rgba(107,114,128,.2)':`${SHIFT_COLOR[type]}44`}`, borderRadius:14, padding:16, textAlign:'center', opacity: done ? 0.55 : 1 }}>
               <div style={{ fontSize:28, marginBottom:6 }}>{type==='صباحي'?'☀️':'🌙'}</div>
               <div style={{ fontSize:14, fontWeight:800, color:'white', marginBottom:3 }}>{label}</div>
               <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginBottom:12 }}>{time}</div>
@@ -2756,7 +2897,7 @@ export default function DeliverySystem() {
           {/* Live Stats */}
           {!sidebarCollapsed && (
             <div style={{ padding:'8px 12px', background:'rgba(0,0,0,.2)', flexShrink:0 }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:ua.length>0?5:0 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:5, marginBottom:ua.length>0?5:0 }}>
                 {[[data.drivers.filter(d=>d.status==='شغال').length,'شغّالين','#10b981'],[newOrd,'جديد','#f97316']].map(([v,l,c])=>(
                   <div key={l} style={{ background:'rgba(255,255,255,.07)', borderRadius:8, padding:'5px 8px', textAlign:'center' }}>
                     <div style={{ fontSize:16, fontWeight:900, color:c, fontFamily:"'JetBrains Mono',monospace" }}>{v}</div>
