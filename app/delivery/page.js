@@ -549,7 +549,7 @@ function Modal({ title, onClose, children, footer, wide }) {
           maxHeight: '92vh',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
-          overflow: 'visible',
+          overflow: 'hidden',
           marginTop: 'auto',
           marginBottom: 'auto',
         }}
