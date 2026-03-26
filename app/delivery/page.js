@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+
 import { supabase } from '../lib/supabase'
 
 // ══════════════════════════════════════════════════════
@@ -15,11 +17,11 @@ const injectStyles = () => {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body, input, select, textarea, button { font-family: 'Cairo', Tahoma, sans-serif !important; }
 
-    @keyframes fadeUp   { from { opacity:0; transform:translateY(18px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes fadeUp   { from { opacity:0; transform:translateY(18px) } to { opacity:1; transform:none } }
     @keyframes fadeIn   { from { opacity:0 } to { opacity:1 } }
     @keyframes slideIn  { from { opacity:0; transform:translateX(60px) } to { opacity:1; transform:translateX(0) } }
     @keyframes slideLeft{ from { opacity:0; transform:translateX(-40px) } to { opacity:1; transform:translateX(0) } }
-    @keyframes popIn    { from { opacity:0; transform:scale(.88) } to { opacity:1; transform:scale(1) } }
+    @keyframes popIn    { from { opacity:0; transform:scale(.88) } to { opacity:1; transform:none } }
     @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.35} }
     @keyframes glow     { 0%,100%{box-shadow:0 0 8px #3b5bfe55} 50%{box-shadow:0 0 22px #3b5bfe99,0 0 40px #3b5bfe33} }
     @keyframes spin     { to{transform:rotate(360deg)} }
@@ -34,7 +36,7 @@ const injectStyles = () => {
     @keyframes blink    { 0%,100%{opacity:1} 40%{opacity:0} }
     @keyframes zoomIn   { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
 
-    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) both }
+    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) }
     .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both }
     .sidebar-item:hover { background: rgba(59,91,254,.18) !important; color: white !important; }
     .shimmer-bg { background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%); background-size:400px 100%; animation:shimmer 1.4s infinite linear; }
@@ -520,78 +522,112 @@ const BarMini = ({ val, max, color }) => (
 //  MODAL
 // ══════════════════════════════════════════════════════
 function Modal({ title, onClose, children, footer, wide }) {
+  const [mounted, setMounted] = useState(false)
+
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    setMounted(true)
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0,
+        position: 'fixed',
+        inset: 0,
         background: 'rgba(0,0,0,.75)',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        zIndex: 9998, backdropFilter: 'blur(6px)',
-        padding: '16px',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        zIndex: 999999,
+        backdropFilter: 'blur(6px)',
+        padding: '24px 16px',
         overflowY: 'auto',
       }}
     >
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         className="modal-enter"
         style={{
           background: '#13151f',
           border: '1px solid rgba(59,91,254,.25)',
           borderRadius: 18,
           width: wide ? 'min(860px, 95vw)' : 'min(520px, 95vw)',
-          maxHeight: '92vh',
-          display: 'flex', flexDirection: 'column',
+          maxHeight: 'calc(100vh - 48px)',
+          display: 'flex',
+          flexDirection: 'column',
           boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
           overflow: 'hidden',
-          marginTop: 'auto',
-          marginBottom: 'auto',
+          margin: '0 auto',
         }}
       >
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          padding: '14px 20px',
-          background: 'rgba(255,255,255,.03)',
-          borderBottom: '1px solid rgba(255,255,255,.07)',
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>{title}</span>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 20px',
+            background: 'rgba(255,255,255,.03)',
+            borderBottom: '1px solid rgba(255,255,255,.07)',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>
+            {title}
+          </span>
+
           <button
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,.08)', border: 'none',
-              borderRadius: 8, width: 30, height: 30,
-              color: 'rgba(255,255,255,.6)', cursor: 'pointer',
-              fontSize: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-              transition: 'all .15s', fontFamily: 'inherit',
+              background: 'rgba(255,255,255,.08)',
+              border: 'none',
+              borderRadius: 8,
+              width: 30,
+              height: 30,
+              color: 'rgba(255,255,255,.6)',
+              cursor: 'pointer',
+              fontSize: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: 'inherit',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.25)'; e.currentTarget.style.color = '#fca5a5' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.08)'; e.currentTarget.style.color = 'rgba(255,255,255,.6)' }}
-          >✕</button>
+          >
+            ✕
+          </button>
         </div>
 
-        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, maxHeight: 'calc(92vh - 120px)' }}>
+        <div
+          style={{
+            padding: '18px 20px',
+            overflowY: 'auto',
+            flex: 1,
+          }}
+        >
           {children}
         </div>
 
         {footer && (
-          <div style={{
-            padding: '12px 20px',
-            borderTop: '1px solid rgba(255,255,255,.07)',
-            background: 'rgba(255,255,255,.02)',
-            flexShrink: 0,
-          }}>
+          <div
+            style={{
+              padding: '12px 20px',
+              borderTop: '1px solid rgba(255,255,255,.07)',
+              background: 'rgba(255,255,255,.02)',
+              flexShrink: 0,
+            }}
+          >
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 // ══════════════════════════════════════════════════════
