@@ -579,7 +579,7 @@ function useData() {
       supabase.from('delivery_vehicles').select('*'),
       supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
       supabase.from('delivery_users').select('*'),
-      supabase.from('delivery_settings').select('*').single(),
+      supabase.from('delivery_settings').select('*').maybeSingle(),
       supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
     ])
 
@@ -961,13 +961,35 @@ function Orders({ data, refetch, user }) {
   const updateStatus = async (id, status) => {
     await supabase.from('delivery_orders').update({ status }).eq('id', id); refetch(); toast.success('تم تحديث الحالة')
   }
-  const deleteOrder  = async (id) => { await supabase.from('delivery_orders').delete().eq('id', id); setConf(null); refetch(); toast.error('تم حذف الطلب') }
+  const deleteOrder = async (id) => {
+  const { error } = await supabase.from('delivery_orders').delete().eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setConf(null)
+  refetch()
+  toast.error('تم حذف الطلب')
+}
   const bulkAssign   = async () => {
     if (!bulkDrv || !selected.length) return
     await supabase.from('delivery_orders').update({ driver_id:parseInt(bulkDrv), status:'تم تعيين المندوب' }).in('id', selected)
     setSel([]); setBulkDrv(''); setShowBulk(false); refetch(); toast.success(`تم تعيين ${selected.length} طلب`)
   }
-  const bulkDelete   = async () => { await supabase.from('delivery_orders').delete().in('id', selected); setSel([]); refetch(); toast.error(`تم حذف ${selected.length} طلب`) }
+  Copyconst bulkDelete = async () => {
+  const { error } = await supabase.from('delivery_orders').delete().in('id', selected)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setSel([])
+  refetch()
+  toast.error(`تم حذف ${selected.length} طلب`)
+}
   const exportOrders = () => {
     exportCSV(
       list.map(o => [o.id, o.customer, o.phone||'', o.zone, o.value, o.payment_method, o.status, drivers.find(d=>d.id===o.driver_id)?.name||'', fmtDate(o.created_at)]),
@@ -1111,6 +1133,21 @@ function OrderModal({ data, order, onClose, refetch }) {
 
   const save = async () => {
     if (!f.customer?.trim() || !f.zone || !f.value) { sE('يجب ملء الحقول المطلوبة (العميل، المنطقة، القيمة)'); return }
+    if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) {
+  sE('يجب كتابة سبب فشل التسليم')
+  return
+}
+
+if (f.status === 'ملغي' && !f.cancel_reason?.trim()) {
+  sE('يجب كتابة سبب الإلغاء')
+  return
+}
+
+if (f.status === 'مرتجع' && !f.return_reason?.trim()) {
+  sE('يجب كتابة سبب المرتجع')
+  return
+}
+
     setSaving(true); sE('')
     const payload = {
       customer: f.customer.trim(), phone: f.phone||'', address: f.address||'', zone: f.zone,
@@ -1289,13 +1326,34 @@ function Drivers({ data, refetch, user }) {
   const [conf,  setConf]  = useState(null)
   const { drivers } = data
 
-  const updateStatus = async (id, status) => { await supabase.from('delivery_drivers').update({ status }).eq('id', id); refetch(); toast.info('تم تحديث حالة المندوب') }
-  const deleteDriver = async (id) => { await supabase.from('delivery_drivers').delete().eq('id', id); setConf(null); refetch(); toast.error('تم حذف المندوب') }
+  const updateStatus = async (id, status) => {
+  const { error } = await supabase.from('delivery_drivers').update({ status }).eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  refetch()
+  toast.info('تم تحديث حالة المندوب')
+}
+  const deleteDriver = async (id) => {
+  const { error } = await supabase.from('delivery_drivers').delete().eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setConf(null)
+  refetch()
+  toast.error('تم حذف المندوب')
+}
 
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
-      {modal && <Modal title={modal==='new'?'➕ مندوب جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)}>
+      {modal && <Modal title={modal==='new'?'➕ مندوب جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)} wide>
         <DriverForm data={data} driver={modal==='new'?null:modal} onClose={() => setModal(null)} refetch={refetch}/>
       </Modal>}
 
@@ -1371,11 +1429,22 @@ function DriverForm({ data, driver, onClose, refetch }) {
   const save = async () => {
     if (!f.name?.trim() || !f.zone) { sE('يجب ملء الاسم والمنطقة'); return }
     const payload = { ...f, vehicle_id:f.vehicle_id?parseInt(f.vehicle_id):null, rating:parseFloat(f.rating)||5 }
-    if (driver) await supabase.from('delivery_drivers').update(payload).eq('id', driver.id)
-    else        await supabase.from('delivery_drivers').insert([{ ...payload, orders:0, delivered:0, on_time_rate:0, earnings:0 }])
-    toast.success(driver ? 'تم تعديل المندوب' : 'تم إضافة المندوب')
-    onClose(); refetch()
-  }
+  let result
+
+if (driver) {
+  result = await supabase.from('delivery_drivers').update(payload).eq('id', driver.id)
+} else {
+  result = await supabase.from('delivery_drivers').insert([{ ...payload, orders:0, delivered:0, on_time_rate:0, earnings:0 }])
+}
+
+if (result.error) {
+  sE('❌ خطأ: ' + result.error.message)
+  return
+}
+
+toast.success(driver ? 'تم تعديل المندوب' : 'تم إضافة المندوب')
+onClose()
+refetch()
   return (
     <div>
       <Err msg={err}/>
@@ -1400,7 +1469,18 @@ function Zones({ data, refetch }) {
   const [modal, setModal] = useState(null)
   const [conf,  setConf]  = useState(null)
   const { zones } = data
-  const deleteZone = async (id) => { await supabase.from('delivery_zones').delete().eq('id', id); setConf(null); refetch(); toast.error('تم حذف المنطقة') }
+  const deleteZone = async (id) => {
+  const { error } = await supabase.from('delivery_zones').delete().eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setConf(null)
+  refetch()
+  toast.error('تم حذف المنطقة')
+}
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
@@ -1521,7 +1601,18 @@ function ZoneModal({ zone, onClose, refetch }) {
 function Vehicles({ data, refetch }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { vehicles } = data
-  const deleteVeh = async (id) => { await supabase.from('delivery_vehicles').delete().eq('id', id); setConf(null); refetch(); toast.error('تم الحذف') }
+  const deleteVeh = async (id) => {
+  const { error } = await supabase.from('delivery_vehicles').delete().eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setConf(null)
+  refetch()
+  toast.error('تم الحذف')
+}
   return (
     <div className="page-enter">
       {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
@@ -1565,9 +1656,22 @@ function VehicleForm({ veh, onClose, refetch }) {
   const save = async () => {
     if (!f.name?.trim()) return
     const payload = { ...f, cost_per_km:parseFloat(f.cost_per_km)||2.5, max_orders:parseInt(f.max_orders)||4 }
-    if (veh) await supabase.from('delivery_vehicles').update(payload).eq('id', veh.id)
-    else     await supabase.from('delivery_vehicles').insert([payload])
-    toast.success('تم الحفظ'); onClose(); refetch()
+   let result
+
+if (veh) {
+  result = await supabase.from('delivery_vehicles').update(payload).eq('id', veh.id)
+} else {
+  result = await supabase.from('delivery_vehicles').insert([payload])
+}
+
+if (result.error) {
+  toast.error('حصل خطأ: ' + result.error.message)
+  return
+}
+
+toast.success('تم الحفظ')
+onClose()
+refetch()
   }
   return (
     <div>
@@ -1589,8 +1693,29 @@ function Trips({ data, refetch }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { trips } = data
   const TRIP_SC = { نشطة:'#10b981', مكتملة:'#6366f1', ملغية:'#ef4444', معلقة:'#f59e0b' }
-  const updateTrip = async (id, status) => { await supabase.from('delivery_trips').update({ status }).eq('id', id); refetch() }
-  const deleteTrip = async (id) => { await supabase.from('delivery_trips').delete().eq('id', id); setConf(null); refetch(); toast.error('تم حذف الرحلة') }
+  const updateTrip = async (id, status) => {
+  const { error } = await supabase.from('delivery_trips').update({ status }).eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  refetch()
+  toast.success('تم تحديث حالة الرحلة')
+}
+  const deleteTrip = async (id) => {
+  const { error } = await supabase.from('delivery_trips').delete().eq('id', id)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
+  }
+
+  setConf(null)
+  refetch()
+  toast.error('تم حذف الرحلة')
+}
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
@@ -1654,9 +1779,22 @@ function TripForm({ data, trip, onClose, refetch }) {
   const save = async () => {
     if (!f.driver_id || !f.zone_id) { toast.error('اختر مندوب ومنطقة'); return }
     const payload = { ...f, driver_id:parseInt(f.driver_id), zone_id:parseInt(f.zone_id), distance:parseFloat(f.distance)||0, time_mins:parseInt(f.time_mins)||0, is_external:f.is_external||false, external_cost:parseFloat(f.external_cost)||0, external_notes:f.external_notes||'' }
-    if (trip) await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
-    else      await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
-    toast.success('تم الحفظ'); onClose(); refetch()
+   let result
+
+if (trip) {
+  result = await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
+} else {
+  result = await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
+}
+
+if (result.error) {
+  toast.error('حصل خطأ: ' + result.error.message)
+  return
+}
+
+toast.success('تم الحفظ')
+onClose()
+refetch()
   }
   return (
     <div>
@@ -2039,11 +2177,26 @@ function Settings({ data, refetch }) {
   const [sla,sSla] = useState(s.defaultSLA||40)
   const [ok, sOk]  = useState(false)
   const [saving, setSaving] = useState(false)
-  const save = async () => {
-    setSaving(true)
-    await supabase.from('delivery_settings').upsert([{ id:1, companyName:cn, unassignedAlert:parseInt(ua)||15, defaultSLA:parseInt(sla)||40 }])
-    setSaving(false); sOk(true); setTimeout(()=>sOk(false),2500); refetch(); toast.success('تم حفظ الإعدادات')
+ const save = async () => {
+  setSaving(true)
+
+  const { error } = await supabase
+    .from('delivery_settings')
+    .upsert([{ id:1, companyName:cn, unassignedAlert:parseInt(ua)||15, defaultSLA:parseInt(sla)||40 }])
+
+  setSaving(false)
+
+  if (error) {
+    toast.error('حصل خطأ: ' + error.message)
+    return
   }
+
+  sOk(true)
+  setTimeout(()=>sOk(false),2500)
+  refetch()
+  toast.success('تم حفظ الإعدادات')
+}
+
   const exportData = () => {
     const json = JSON.stringify(data, null, 2)
     const blob = new Blob([json], { type:'application/json' })
@@ -2113,7 +2266,7 @@ function Users({ data, refetch, currentUser }) {
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
-      {modal && <Modal title={modal==='new'?'➕ مستخدم جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)}>
+      {modal && <Modal title={modal==='new'?'➕ مندوب جديد':`✏ تعديل: ${modal.name}`} onClose={() => setModal(null)} wide>
         <UserForm user_={modal==='new'?null:modal} onClose={() => setModal(null)} refetch={refetch}/>
       </Modal>}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:14 }}>
@@ -2167,10 +2320,22 @@ function UserForm({ user_, onClose, refetch }) {
     if (!f.name?.trim() || !f.username?.trim()) { sE('يجب ملء الاسم واسم المستخدم'); return }
     if (!user_ && !f.password) { sE('يجب ملء كلمة المرور'); return }
     const payload = { name:f.name.trim(), username:f.username.trim(), password:f.password||(user_?.password)||'', role:f.role||'dispatcher' }
-    if (user_) await supabase.from('delivery_users').update(payload).eq('id', user_.id)
-    else       await supabase.from('delivery_users').insert([{ ...payload, active:true }])
-    toast.success(user_?'تم تعديل المستخدم':'تم إضافة مستخدم')
-    onClose(); refetch()
+   let result
+
+if (user_) {
+  result = await supabase.from('delivery_users').update(payload).eq('id', user_.id)
+} else {
+  result = await supabase.from('delivery_users').insert([{ ...payload, active:true }])
+}
+
+if (result.error) {
+  sE('❌ خطأ: ' + result.error.message)
+  return
+}
+
+toast.success(user_ ? 'تم تعديل المستخدم' : 'تم إضافة مستخدم')
+onClose()
+refetch()
   }
   return (
     <div>
@@ -2195,19 +2360,29 @@ function UserForm({ user_, onClose, refetch }) {
 // ══════════════════════════════════════════════════════
 function RefreshBar({ lastUpdate, onRefresh }) {
   const [secs, setSecs] = useState(60)
+
   useEffect(() => {
     setSecs(60)
-    const t = setInterval(() => setSecs(s => { if (s <= 1) { onRefresh(); return 60 } return s - 1 }), 1000)
+    const t = setInterval(() => {
+      setSecs(s => (s > 1 ? s - 1 : 60))
+    }, 1000)
     return () => clearInterval(t)
   }, [lastUpdate])
+
   return (
     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
       <div style={{ width:36, height:4, background:'rgba(255,255,255,.1)', borderRadius:2, overflow:'hidden' }}>
         <div style={{ height:'100%', width:`${(secs/60)*100}%`, background:'#3b5bfe', borderRadius:2, transition:'width 1s linear' }}/>
       </div>
       <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontFamily:"'JetBrains Mono',monospace" }}>{secs}ث</span>
-      <button onClick={onRefresh} style={{ background:'none', border:'none', color:'rgba(255,255,255,.3)', cursor:'pointer', fontSize:13, transition:'color .15s' }}
-        onMouseEnter={e=>e.target.style.color='white'} onMouseLeave={e=>e.target.style.color='rgba(255,255,255,.3)'}>↻</button>
+      <button
+        onClick={onRefresh}
+        style={{ background:'none', border:'none', color:'rgba(255,255,255,.3)', cursor:'pointer', fontSize:13, transition:'color .15s' }}
+        onMouseEnter={e=>e.target.style.color='white'}
+        onMouseLeave={e=>e.target.style.color='rgba(255,255,255,.3)'}
+      >
+        ↻
+      </button>
     </div>
   )
 }
@@ -2281,10 +2456,22 @@ function PrepStation({ data, refetch }) {
   }, [prepOrders.length, sound, playBeep])
 
   const markReady = async (id) => {
-    setDone(d => [...d, id])
-    await supabase.from('delivery_orders').update({ status:'جاهز للشحن' }).eq('id', id)
-    setTimeout(() => { setDone(d => d.filter(x => x !== id)); refetch(); toast.success('تم تحويل الطلب للشحن ✅') }, 600)
+  setDone(d => [...d, id])
+
+  const { error } = await supabase.from('delivery_orders').update({ status:'جاهز للشحن' }).eq('id', id)
+
+  if (error) {
+    setDone(d => d.filter(x => x !== id))
+    toast.error('حصل خطأ: ' + error.message)
+    return
   }
+
+  setTimeout(() => {
+    setDone(d => d.filter(x => x !== id))
+    refetch()
+    toast.success('تم تحويل الطلب للشحن ✅')
+  }, 600)
+}
 
   return (
     <div className="page-enter">
@@ -2393,6 +2580,7 @@ function DeliveryTracker({ data, refetch }) {
   const [myCoords,      setMyCoords]      = useState(null)
   const [driverLocs,    setDriverLocs]    = useState({})
   const [selectedDrv,   setSelectedDrv]   = useState(null)
+  const lastGpsSendRef = useRef(0)
   const [mode,          setMode]          = useState('admin') // 'admin' | 'driver'
 useEffect(() => {
   return () => {
@@ -2418,12 +2606,21 @@ useEffect(() => {
     if (!navigator.geolocation) { toast.error('المتصفح لا يدعم GPS'); return }
     const wid = navigator.geolocation.watchPosition(async (pos) => {
       const { latitude: lat, longitude: lng, accuracy } = pos.coords
-      setMyCoords({ lat, lng, accuracy })
-      await supabase.from('delivery_driver_locations').upsert([{
+setMyCoords({ lat, lng, accuracy })
+
+const now = Date.now()
+if (now - lastGpsSendRef.current < 10000) return
+lastGpsSendRef.current = now
+
+const { error } = await supabase.from('delivery_driver_locations').upsert([{
         driver_id: parseInt(myDriverId), lat, lng, accuracy,
         updated_at: new Date().toISOString(),
         driver_name: drivers.find(d=>d.id===parseInt(myDriverId))?.name || ''
       }], { onConflict: 'driver_id' })
+
+if (error) {
+  toast.error('حصل خطأ أثناء تحديث الموقع: ' + error.message)
+}
     }, (err) => { toast.error('تعذر الحصول على الموقع: ' + err.message) },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 })
     setGpsWatcher(wid); setGpsActive(true); toast.success('تم تفعيل مشاركة الموقع 📍')
