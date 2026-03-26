@@ -517,6 +517,81 @@ const BarMini = ({ val, max, color }) => (
 )
 
 // ══════════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════════
+function Modal({ title, onClose, children, footer, wide }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,.75)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 9998, backdropFilter: 'blur(6px)',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="modal-enter"
+        style={{
+          background: '#13151f',
+          border: '1px solid rgba(59,91,254,.25)',
+          borderRadius: 18,
+          width: wide ? 'min(860px, 95vw)' : 'min(520px, 95vw)',
+          maxHeight: '90vh',
+          display: 'flex', flexDirection: 'column',
+          boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px',
+          background: 'rgba(255,255,255,.03)',
+          borderBottom: '1px solid rgba(255,255,255,.07)',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>{title}</span>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,.08)', border: 'none',
+              borderRadius: 8, width: 30, height: 30,
+              color: 'rgba(255,255,255,.6)', cursor: 'pointer',
+              fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all .15s', fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.25)'; e.currentTarget.style.color = '#fca5a5' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.08)'; e.currentTarget.style.color = 'rgba(255,255,255,.6)' }}
+          >✕</button>
+        </div>
+
+        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1 }}>
+          {children}
+        </div>
+
+        {footer && (
+          <div style={{
+            padding: '12px 20px',
+            borderTop: '1px solid rgba(255,255,255,.07)',
+            background: 'rgba(255,255,255,.02)',
+            flexShrink: 0,
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+// ══════════════════════════════════════════════════════
 //  DATA HOOK
 // ══════════════════════════════════════════════════════
 function useData() {
