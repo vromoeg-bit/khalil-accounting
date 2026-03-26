@@ -532,7 +532,7 @@ function Modal({ title, onClose, children, footer, wide }) {
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(0,0,0,.75)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 9998, backdropFilter: 'blur(6px)',
         padding: '16px',
         overflowY: 'auto',
@@ -550,12 +550,12 @@ function Modal({ title, onClose, children, footer, wide }) {
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(59,91,254,.1)',
           overflow: 'hidden',
-          marginTop: '0',
-          marginBottom: '0',
+          marginTop: 'auto',
+          marginBottom: 'auto',
         }}
       >
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
           padding: '14px 20px',
           background: 'rgba(255,255,255,.03)',
           borderBottom: '1px solid rgba(255,255,255,.07)',
@@ -568,7 +568,7 @@ function Modal({ title, onClose, children, footer, wide }) {
               background: 'rgba(255,255,255,.08)', border: 'none',
               borderRadius: 8, width: 30, height: 30,
               color: 'rgba(255,255,255,.6)', cursor: 'pointer',
-              fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
               transition: 'all .15s', fontFamily: 'inherit',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.25)'; e.currentTarget.style.color = '#fca5a5' }}
