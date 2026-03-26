@@ -467,6 +467,90 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
 // ══════════════════════════════════════════════════════
 //  DATA HOOK
 // ══════════════════════════════════════════════════════
+//  MICRO COMPONENTS
+// ══════════════════════════════════════════════════════
+const SectionTitle = ({ children }) => (
+  <div style={{ fontSize:14, fontWeight:800, color:'white', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>{children}</div>
+)
+
+const Tbl = ({ cols, rows }) => (
+  <div style={{ overflowX:'auto' }}>
+    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+      <thead>
+        <tr style={{ background:'rgba(255,255,255,.04)' }}>
+          {cols.map((c,i) => (
+            <th key={i} style={{ padding:'9px 12px', textAlign:'right', color:'rgba(255,255,255,.4)', fontWeight:700, fontSize:11, borderBottom:'1px solid rgba(255,255,255,.07)', whiteSpace:'nowrap' }}>{c}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>
+  </div>
+)
+
+const Tr = ({ children, selected, hi }) => (
+  <tr className="tbl-row" style={{ background: selected ? 'rgba(59,91,254,.08)' : hi || 'transparent', borderBottom:'1px solid rgba(255,255,255,.04)' }}>{children}</tr>
+)
+
+const Td = ({ children, style: s = {} }) => (
+  <td style={{ padding:'9px 12px', ...s }}>{children}</td>
+)
+
+const Inp = ({ value, onChange, type='text', placeholder, prefix, suffix, style: sx={} }) => (
+  <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
+    {prefix && <span style={{ position:'absolute', right:9, fontSize:13, pointerEvents:'none', zIndex:1 }}>{prefix}</span>}
+    <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+      style={{ width:'100%', padding:`8px ${suffix?'32px':'11px'} 8px ${prefix?'30px':'11px'}`, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, fontFamily:'inherit', outline:'none', direction:'rtl', transition:'border .15s', ...sx }}
+      onFocus={e=>e.target.style.borderColor='rgba(59,91,254,.5)'} onBlur={e=>e.target.style.borderColor='rgba(255,255,255,.1)'}/>
+    {suffix && <span style={{ position:'absolute', left:9, fontSize:11, color:'rgba(255,255,255,.3)', pointerEvents:'none' }}>{suffix}</span>}
+  </div>
+)
+
+const Sel = ({ value, onChange, options, style: sx={} }) => (
+  <select value={value||''} onChange={e=>onChange(e.target.value)}
+    style={{ width:'100%', padding:'8px 11px', background:'#0d1018', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, fontFamily:'inherit', outline:'none', direction:'rtl', cursor:'pointer', ...sx }}>
+    {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+  </select>
+)
+
+const Fld = ({ label, children, required, hint }) => (
+  <div style={{ marginBottom:12 }}>
+    <label style={{ display:'block', fontSize:11, fontWeight:700, color:'rgba(255,255,255,.45)', marginBottom:5 }}>
+      {label}{required && <span style={{ color:'#ef4444', marginRight:3 }}>*</span>}
+      {hint && <span style={{ color:'rgba(255,255,255,.25)', marginRight:6, fontWeight:400 }}>({hint})</span>}
+    </label>
+    {children}
+  </div>
+)
+
+const Err = ({ msg }) => msg ? (
+  <div style={{ background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', color:'#fca5a5', borderRadius:9, padding:'9px 14px', fontSize:13, fontWeight:700, marginBottom:12, animation:'fadeUp .3s ease' }}>{msg}</div>
+) : null
+
+const Checkbox = ({ checked, onChange }) => (
+  <div onClick={onChange} style={{ width:18, height:18, borderRadius:5, border:`2px solid ${checked?'#3b5bfe':'rgba(255,255,255,.2)'}`, background:checked?'#3b5bfe':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, transition:'all .15s' }}>
+    {checked && <span style={{ color:'white', fontSize:11, fontWeight:800, lineHeight:1 }}>✓</span>}
+  </div>
+)
+
+const Confirm = ({ msg, onOk, onCancel }) => (
+  <div onClick={onCancel} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, backdropFilter:'blur(4px)' }}>
+    <div onClick={e=>e.stopPropagation()} style={{ background:'#1a1a2e', borderRadius:18, padding:28, maxWidth:380, width:'90%', boxShadow:'0 20px 60px rgba(0,0,0,.5)', border:'1px solid rgba(239,68,68,.25)', animation:'popIn .25s ease' }}>
+      <div style={{ fontSize:36, textAlign:'center', marginBottom:12 }}>⚠️</div>
+      <div style={{ fontSize:15, fontWeight:800, color:'white', textAlign:'center', marginBottom:20 }}>{msg}</div>
+      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+        <Btn onClick={onOk} color="#ef4444">تأكيد</Btn>
+        <Btn onClick={onCancel} color="rgba(255,255,255,.1)">إلغاء</Btn>
+      </div>
+    </div>
+  </div>
+)
+
+const BarMini = ({ val, max, color }) => (
+  <div style={{ height:5, borderRadius:3, background:'rgba(255,255,255,.07)', overflow:'hidden' }}>
+    <div style={{ height:'100%', width:`${Math.min((val/Math.max(max,1))*100,100)}%`, background:color||'#3b5bfe', borderRadius:3, transition:'width .5s ease' }}/>
+  </div>
+)
 function useData() {
   const [data, setData] = useState({
     orders:[],
@@ -635,8 +719,7 @@ function InvoiceModal({ order, onClose }) {
   const total  = prods.reduce((s,p) => s + (parseFloat(p.qty)||0)*(parseFloat(p.price)||0), 0)
   const sc     = SC[order.status] || {}
   return (
-    <Modal title="🧾 فاتورة الطلب" onClose={onClose} extra={<Btn onClick={() => window.print()} small color="#10b981">🖨 طباعة</Btn>}>
-      <div className="print-area" style={{ direction:'rtl' }}>
+<Modal title="🧾 فاتورة الطلب" onClose={onClose} footer={<Btn onClick={() => window.print()} small color="#10b981">🖨 طباعة</Btn>}>      <div className="print-area" style={{ direction:'rtl' }}>
         <div style={{ textAlign:'center', marginBottom:20, borderBottom:'2px dashed rgba(255,255,255,.1)', paddingBottom:16 }}>
           <div style={{ fontSize:32, marginBottom:4 }}>🚚</div>
           <div style={{ fontSize:18, fontWeight:900, color:'white' }}>فاتورة توصيل</div>
