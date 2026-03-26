@@ -981,7 +981,7 @@ function Orders({ data, refetch, user }) {
     await supabase.from('delivery_orders').update({ driver_id:parseInt(bulkDrv), status:'تم تعيين المندوب' }).in('id', selected)
     setSel([]); setBulkDrv(''); setShowBulk(false); refetch(); toast.success(`تم تعيين ${selected.length} طلب`)
   }
-  Copyconst bulkDelete = async () => {
+  const bulkDelete = async () => {
   const { error } = await supabase.from('delivery_orders').delete().in('id', selected)
 
   if (error) {
@@ -1432,22 +1432,20 @@ function DriverForm({ data, driver, onClose, refetch }) {
   const save = async () => {
     if (!f.name?.trim() || !f.zone) { sE('يجب ملء الاسم والمنطقة'); return }
     const payload = { ...f, vehicle_id:f.vehicle_id?parseInt(f.vehicle_id):null, rating:parseFloat(f.rating)||5 }
-  let result
-
-if (driver) {
-  result = await supabase.from('delivery_drivers').update(payload).eq('id', driver.id)
-} else {
-  result = await supabase.from('delivery_drivers').insert([{ ...payload, orders:0, delivered:0, on_time_rate:0, earnings:0 }])
-}
-
-if (result.error) {
-  sE('❌ خطأ: ' + result.error.message)
-  return
-}
-
-toast.success(driver ? 'تم تعديل المندوب' : 'تم إضافة المندوب')
-onClose()
-refetch()
+    let result
+    if (driver) {
+      result = await supabase.from('delivery_drivers').update(payload).eq('id', driver.id)
+    } else {
+      result = await supabase.from('delivery_drivers').insert([{ ...payload, orders:0, delivered:0, on_time_rate:0, earnings:0 }])
+    }
+    if (result.error) {
+      sE('❌ خطأ: ' + result.error.message)
+      return
+    }
+    toast.success(driver ? 'تم تعديل المندوب' : 'تم إضافة المندوب')
+    onClose()
+    refetch()
+  }
   return (
     <div>
       <Err msg={err}/>
@@ -1659,22 +1657,19 @@ function VehicleForm({ veh, onClose, refetch }) {
   const save = async () => {
     if (!f.name?.trim()) return
     const payload = { ...f, cost_per_km:parseFloat(f.cost_per_km)||2.5, max_orders:parseInt(f.max_orders)||4 }
-   let result
-
-if (veh) {
-  result = await supabase.from('delivery_vehicles').update(payload).eq('id', veh.id)
-} else {
-  result = await supabase.from('delivery_vehicles').insert([payload])
-}
-
-if (result.error) {
-  toast.error('حصل خطأ: ' + result.error.message)
-  return
-}
-
-toast.success('تم الحفظ')
-onClose()
-refetch()
+    let result
+    if (veh) {
+      result = await supabase.from('delivery_vehicles').update(payload).eq('id', veh.id)
+    } else {
+      result = await supabase.from('delivery_vehicles').insert([payload])
+    }
+    if (result.error) {
+      toast.error('حصل خطأ: ' + result.error.message)
+      return
+    }
+    toast.success('تم الحفظ')
+    onClose()
+    refetch()
   }
   return (
     <div>
@@ -1688,7 +1683,6 @@ refetch()
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════
 //  TRIPS
 // ══════════════════════════════════════════════════════
@@ -1782,22 +1776,19 @@ function TripForm({ data, trip, onClose, refetch }) {
   const save = async () => {
     if (!f.driver_id || !f.zone_id) { toast.error('اختر مندوب ومنطقة'); return }
     const payload = { ...f, driver_id:parseInt(f.driver_id), zone_id:parseInt(f.zone_id), distance:parseFloat(f.distance)||0, time_mins:parseInt(f.time_mins)||0, is_external:f.is_external||false, external_cost:parseFloat(f.external_cost)||0, external_notes:f.external_notes||'' }
-   let result
-
-if (trip) {
-  result = await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
-} else {
-  result = await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
-}
-
-if (result.error) {
-  toast.error('حصل خطأ: ' + result.error.message)
-  return
-}
-
-toast.success('تم الحفظ')
-onClose()
-refetch()
+    let result
+    if (trip) {
+      result = await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
+    } else {
+      result = await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
+    }
+    if (result.error) {
+      toast.error('حصل خطأ: ' + result.error.message)
+      return
+    }
+    toast.success('تم الحفظ')
+    onClose()
+    refetch()
   }
   return (
     <div>
@@ -1809,7 +1800,6 @@ refetch()
         <Fld label="المسافة (كم)"><Inp type="number" value={f.distance} onChange={set('distance')} suffix="كم"/></Fld>
         <Fld label="الوقت (دقيقة)"><Inp type="number" value={f.time_mins} onChange={set('time_mins')} suffix="د"/></Fld>
       </div>
-      {/* External Trip Toggle */}
       <div onClick={() => set('is_external')(!f.is_external)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:f.is_external?'rgba(168,85,247,.1)':'rgba(255,255,255,.04)', border:`1px solid ${f.is_external?'rgba(168,85,247,.3)':'rgba(255,255,255,.08)'}`, borderRadius:10, marginBottom:f.is_external?10:16, cursor:'pointer', transition:'all .2s' }}>
         <Checkbox checked={f.is_external} onChange={() => set('is_external')(!f.is_external)}/>
         <span style={{ fontSize:13, fontWeight:700, color:f.is_external?'#d8b4fe':'rgba(255,255,255,.7)' }}>🚗 مشوار خارجي</span>
@@ -1827,7 +1817,6 @@ refetch()
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════
 //  PRICING
 // ══════════════════════════════════════════════════════
@@ -2323,22 +2312,19 @@ function UserForm({ user_, onClose, refetch }) {
     if (!f.name?.trim() || !f.username?.trim()) { sE('يجب ملء الاسم واسم المستخدم'); return }
     if (!user_ && !f.password) { sE('يجب ملء كلمة المرور'); return }
     const payload = { name:f.name.trim(), username:f.username.trim(), password:f.password||(user_?.password)||'', role:f.role||'dispatcher' }
-   let result
-
-if (user_) {
-  result = await supabase.from('delivery_users').update(payload).eq('id', user_.id)
-} else {
-  result = await supabase.from('delivery_users').insert([{ ...payload, active:true }])
-}
-
-if (result.error) {
-  sE('❌ خطأ: ' + result.error.message)
-  return
-}
-
-toast.success(user_ ? 'تم تعديل المستخدم' : 'تم إضافة مستخدم')
-onClose()
-refetch()
+    let result
+    if (user_) {
+      result = await supabase.from('delivery_users').update(payload).eq('id', user_.id)
+    } else {
+      result = await supabase.from('delivery_users').insert([{ ...payload, active:true }])
+    }
+    if (result.error) {
+      sE('❌ خطأ: ' + result.error.message)
+      return
+    }
+    toast.success(user_ ? 'تم تعديل المستخدم' : 'تم إضافة مستخدم')
+    onClose()
+    refetch()
   }
   return (
     <div>
@@ -2357,7 +2343,6 @@ refetch()
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════
 //  AUTO-REFRESH BAR
 // ══════════════════════════════════════════════════════
