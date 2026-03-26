@@ -378,12 +378,13 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15,23,42,0.55)',
+        background: 'rgba(15,17,42,0.8)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
         zIndex: 9999,
+        backdropFilter: 'blur(4px)',
       }}
     >
       <div
@@ -392,9 +393,10 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
           width: wide ? 'min(980px, 96vw)' : 'min(560px, 96vw)',
           maxWidth: '96vw',
           maxHeight: 'calc(100vh - 32px)',
-          background: '#fff',
+          background: '#1a1a2e',
+          color: 'white',
           borderRadius: 20,
-          boxShadow: '0 20px 70px rgba(0,0,0,.25)',
+          boxShadow: '0 20px 70px rgba(0,0,0,.5), 0 0 40px rgba(59,91,254,.2)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -403,15 +405,16 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
         <div
           style={{
             padding: '16px 20px',
-            borderBottom: '1px solid #eee',
+            borderBottom: '1px solid rgba(59,91,254,.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
             flexShrink: 0,
+            background: 'rgba(59,91,254,.05)',
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'white' }}>
             {title}
           </div>
 
@@ -423,7 +426,11 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
               fontSize: 24,
               cursor: 'pointer',
               lineHeight: 1,
+              color: 'rgba(255,255,255,.5)',
+              transition: 'color .15s',
             }}
+            onMouseEnter={e => e.target.style.color = '#ef4444'}
+            onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,.5)'}
           >
             ×
           </button>
@@ -444,9 +451,9 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
           <div
             style={{
               padding: 16,
-              borderTop: '1px solid #eee',
+              borderTop: '1px solid rgba(59,91,254,.2)',
               flexShrink: 0,
-              background: '#fff',
+              background: 'rgba(0,0,0,.2)',
             }}
           >
             {footer}
@@ -456,101 +463,6 @@ function Modal({ open, onClose, title, children, footer, wide = false }) {
     </div>
   );
 }
-
-
-const Confirm = ({ msg, onOk, onCancel, danger = true }) => (
-  <Modal title="تأكيد العملية" onClose={onCancel}>
-    <div style={{ textAlign:'center', padding:'10px 0' }}>
-      <div style={{ fontSize:52, marginBottom:10, animation:'float 2s ease infinite' }}>{danger ? '🗑️' : '✅'}</div>
-      <div style={{ fontSize:15, fontWeight:700, color:'white', marginBottom:22 }}>{msg}</div>
-      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-        <Btn onClick={onOk} color={danger?"#ef4444":"#10b981"}>تأكيد</Btn>
-        <Btn onClick={onCancel} color="rgba(255,255,255,.12)">إلغاء</Btn>
-      </div>
-    </div>
-  </Modal>
-)
-
-const Inp = ({ value, onChange, placeholder, type = 'text', style: s = {}, prefix, suffix }) => (
-  <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
-    {prefix && <span style={{ position:'absolute', right:10, color:'rgba(255,255,255,.35)', fontSize:14, pointerEvents:'none' }}>{prefix}</span>}
-    <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder || ''}
-      style={{ width:'100%', padding:`9px ${prefix?'34px':'13px'} 9px ${suffix?'34px':'13px'}`, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, outline:'none', direction:'rtl', fontFamily:'inherit', transition:'border-color .2s, box-shadow .2s', ...s }}
-      onFocus={e => { e.target.style.borderColor='rgba(59,91,254,.5)'; e.target.style.boxShadow='0 0 0 3px rgba(59,91,254,.1)' }}
-      onBlur={e  => { e.target.style.borderColor='rgba(255,255,255,.1)'; e.target.style.boxShadow='none' }}/>
-    {suffix && <span style={{ position:'absolute', left:10, color:'rgba(255,255,255,.35)', fontSize:12 }}>{suffix}</span>}
-  </div>
-)
-
-const Sel = ({ value, onChange, options, style: s = {} }) => (
-  <select value={value ?? ''} onChange={e => onChange(e.target.value)}
-    style={{ width:'100%', padding:'9px 13px', background:'#0d1018', border:'1px solid rgba(255,255,255,.1)', borderRadius:9, color:'white', fontSize:13, direction:'rtl', fontFamily:'inherit', outline:'none', transition:'border-color .2s', ...s }}
-    onFocus={e => e.target.style.borderColor='rgba(59,91,254,.5)'}
-    onBlur={e  => e.target.style.borderColor='rgba(255,255,255,.1)'}>
-    <option value=''>اختر...</option>
-    {options.map(o => <option key={o.v ?? o} value={o.v ?? o}>{o.l ?? o}</option>)}
-  </select>
-)
-
-const Fld = ({ label, children, required, hint }) => (
-  <div style={{ marginBottom:12 }}>
-    <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)', marginBottom:5 }}>
-      {label}{required && <span style={{ color:'#ef4444' }}>*</span>}
-      {hint && <span style={{ fontWeight:400, color:'rgba(255,255,255,.25)', fontSize:10 }}>{hint}</span>}
-    </label>
-    {children}
-  </div>
-)
-
-const Err = ({ msg }) => !msg ? null : (
-  <div style={{ background:'rgba(239,68,68,.12)', color:'#fca5a5', border:'1px solid rgba(239,68,68,.3)', borderRadius:9, padding:'9px 14px', fontSize:13, fontWeight:700, marginBottom:12, animation:'fadeUp .3s ease', display:'flex', alignItems:'center', gap:8 }}>
-    <span>⚠️</span>{msg}
-  </div>
-)
-
-const Tbl = ({ cols, rows, loading }) => (
-  <div style={{ overflowX:'auto' }}>
-    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-      <thead>
-        <tr>{cols.map(c => <th key={c} style={{ textAlign:'right', padding:'10px 12px', background:'rgba(255,255,255,.03)', color:'rgba(255,255,255,.4)', fontSize:11, fontWeight:700, whiteSpace:'nowrap', borderBottom:'1px solid rgba(255,255,255,.06)', letterSpacing:.5 }}>{c}</th>)}</tr>
-      </thead>
-      <tbody>
-        {loading ? Array(5).fill(0).map((_,i) => (
-          <tr key={i}>{cols.map((c,j) => <td key={j} style={{ padding:'12px', borderBottom:'1px solid rgba(255,255,255,.04)' }}><div className="shimmer-bg" style={{ height:14, borderRadius:6, width:`${50+Math.random()*40}%` }}/></td>)}</tr>
-        )) : rows}
-      </tbody>
-    </table>
-  </div>
-)
-
-const Tr = ({ children, hi, selected, onClick }) => {
-  const [h, sH] = useState(false)
-  return <tr className="tbl-row" onMouseEnter={() => sH(true)} onMouseLeave={() => sH(false)} onClick={onClick}
-    style={{ background:selected?'rgba(59,91,254,.12)':h?'rgba(255,255,255,.02)':hi||'transparent', transition:'background .12s', cursor:onClick?'pointer':'default' }}>{children}</tr>
-}
-
-const Td = ({ children, style: s = {} }) => (
-  <td style={{ padding:'10px 12px', borderBottom:'1px solid rgba(255,255,255,.04)', verticalAlign:'middle', ...s }}>{children}</td>
-)
-
-const BarMini = ({ val, max, color }) => (
-  <div style={{ width:'100%', background:'rgba(255,255,255,.07)', borderRadius:4, height:5, overflow:'hidden' }}>
-    <div style={{ width:`${Math.min((val/Math.max(max,1))*100,100)}%`, height:'100%', background:color, borderRadius:4, transition:'width .6s cubic-bezier(.22,1,.36,1)' }}/>
-  </div>
-)
-
-const SectionTitle = ({ children, action }) => (
-  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-    <h2 style={{ fontSize:16, fontWeight:800, color:'white', display:'flex', alignItems:'center', gap:8 }}>{children}</h2>
-    {action}
-  </div>
-)
-
-const Checkbox = ({ checked, onChange }) => (
-  <div onClick={onChange} style={{ width:18, height:18, borderRadius:5, border:`2px solid ${checked?'#3b5bfe':'rgba(255,255,255,.2)'}`, background:checked?'#3b5bfe':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all .15s', flexShrink:0 }}>
-    {checked && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
-  </div>
-)
 
 // ══════════════════════════════════════════════════════
 //  DATA HOOK
