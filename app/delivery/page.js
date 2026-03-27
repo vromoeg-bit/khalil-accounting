@@ -1997,47 +1997,68 @@ function VehicleForm({ veh, onClose, refetch }) {
 //  TRIPS
 // ══════════════════════════════════════════════════════
 function Trips({ data, refetch }) {
-  const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
+  const [modal, setModal] = useState(null)
+  const [conf, setConf] = useState(null)
+  const [tripFilter, setTripFilter] = useState('all')
+
   const { trips } = data
-  const filteredTrips = trips.filter(t => {
-  if (tripFilter === 'external') return t.is_external
-  if (tripFilter === 'normal') return !t.is_external
-  return true
-})
   const TRIP_SC = { نشطة:'#10b981', مكتملة:'#6366f1', ملغية:'#ef4444', معلقة:'#f59e0b' }
+
+  const filteredTrips = trips.filter(t => {
+    if (tripFilter === 'external') return !!t.is_external
+    if (tripFilter === 'normal') return !t.is_external
+    return true
+  })
+
   const updateTrip = async (id, status) => {
     const { error } = await supabase.from('delivery_trips').update({ status }).eq('id', id)
-    if (error) { toast.error('حصل خطأ: ' + error.message); return }
-    refetch(); toast.success('تم تحديث حالة الرحلة')
+    if (error) {
+      toast.error('حصل خطأ: ' + error.message)
+      return
+    }
+    refetch()
+    toast.success('تم تحديث حالة الرحلة')
   }
+
   const deleteTrip = async (id) => {
     const { error } = await supabase.from('delivery_trips').delete().eq('id', id)
-    if (error) { toast.error('حصل خطأ: ' + error.message); return }
-    setConf(null); refetch(); toast.error('تم حذف الرحلة')
+    if (error) {
+      toast.error('حصل خطأ: ' + error.message)
+      return
+    }
+    setConf(null)
+    refetch()
+    toast.error('تم حذف الرحلة')
   }
+
+  const modalTitle =
+    modal === 'new'
+      ? '➕ رحلة جديدة'
+      : modal === 'new_external'
+      ? '🚗 مشوار خارجي جديد'
+      : '✏ تعديل رحلة'
+
+  const modalTrip =
+    modal === 'new' || modal === 'new_external'
+      ? null
+      : modal
+
   return (
     <div className="page-enter">
-      {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
+      {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
+
       {modal && (
-  <Modal
-    title={
-      modal === 'new'
-        ? '➕ رحلة جديدة'
-        : modal === 'new_external'
-        ? '🚗 مشوار خارجي جديد'
-        : '✏ تعديل رحلة'
-    }
-    onClose={() => setModal(null)}
-  >
-    <TripForm
-      data={data}
-      trip={modal === 'new' || modal === 'new_external' ? null : modal}
-      initialExternal={modal === 'new_external'}
-      onClose={() => setModal(null)}
-      refetch={refetch}
-    />
-  </Modal>
-)}
+        <Modal title={modalTitle} onClose={() => setModal(null)}>
+          <TripForm
+            data={data}
+            trip={modalTrip}
+            initialExternal={modal === 'new_external'}
+            onClose={() => setModal(null)}
+            refetch={refetch}
+          />
+        </Modal>
+      )}
+
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:14 }}>
         <Kpi label="🕐 الكل" value={trips.length} color="#3b5bfe"/>
         <Kpi label="🟢 نشطة" value={trips.filter(t=>t.status==='نشطة').length} color="#10b981"/>
@@ -2045,47 +2066,68 @@ function Trips({ data, refetch }) {
         <Kpi label="⏳ معلقة" value={trips.filter(t=>t.status==='معلقة').length} color="#f59e0b"/>
         <Kpi label="🚗 خارجية" value={trips.filter(t=>t.is_external).length} color="#a855f7"/>
       </div>
+
       <div style={{ marginBottom:12, display:'flex', gap:8, flexWrap:'wrap' }}>
-  <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ رحلة عادية</Btn>
-  <Btn onClick={() => setModal('new_external')} color="#a855f7">🚗 مشوار خارجي</Btn>
-</div>
-<div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
-  <Btn onClick={() => setTripFilter('all')} small color={tripFilter==='all' ? '#3b5bfe' : 'rgba(255,255,255,.12)'}>الكل</Btn>
-  <Btn onClick={() => setTripFilter('normal')} small color={tripFilter==='normal' ? '#10b981' : 'rgba(255,255,255,.12)'}>رحلات عادية</Btn>
-  <Btn onClick={() => setTripFilter('external')} small color={tripFilter==='external' ? '#a855f7' : 'rgba(255,255,255,.12)'}>مشاوير خارجية</Btn>
-</div>
+        <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ رحلة عادية</Btn>
+        <Btn onClick={() => setModal('new_external')} color="#a855f7">🚗 مشوار خارجي</Btn>
+      </div>
+
+      <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+        <Btn onClick={() => setTripFilter('all')} small color={tripFilter==='all' ? '#3b5bfe' : 'rgba(255,255,255,.12)'}>الكل</Btn>
+        <Btn onClick={() => setTripFilter('normal')} small color={tripFilter==='normal' ? '#10b981' : 'rgba(255,255,255,.12)'}>رحلات عادية</Btn>
+        <Btn onClick={() => setTripFilter('external')} small color={tripFilter==='external' ? '#a855f7' : 'rgba(255,255,255,.12)'}>مشاوير خارجية</Btn>
+      </div>
+
       <Card>
         <Tbl cols={['#','المندوب','المنطقة','الموجة','النوع','المسافة','الوقت','الحالة','إجراء']} rows={
           filteredTrips.map(t => {
             const drv  = data.drivers.find(d => d.id === t.driver_id)
             const zone = data.zones.find(z => z.id === t.zone_id)
             const sc_  = TRIP_SC[t.status] || '#6b7280'
+
             return (
               <Tr key={t.id}>
                 <Td style={{ color:'rgba(255,255,255,.35)', fontFamily:"'JetBrains Mono',monospace" }}>#{t.id}</Td>
-                <Td style={{ fontWeight:600, color:'white' }}>{drv?drv.name:'—'}</Td>
-                <Td style={{ color:'rgba(255,255,255,.6)' }}>{zone?zone.name:'—'}</Td>
-                <Td><span style={{ fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:6, background:'rgba(59,91,254,.15)', color:'#7b9fff' }}>{t.wave}</span></Td>
+                <Td style={{ fontWeight:600, color:'white' }}>{drv ? drv.name : '—'}</Td>
+                <Td style={{ color:'rgba(255,255,255,.6)' }}>{zone ? zone.name : '—'}</Td>
                 <Td>
-                  {t.is_external
-                    ? <div>
-                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'rgba(168,85,247,.2)', color:'#d8b4fe' }}>🚗 خارجي</span>
-                        {t.external_cost > 0 && <div style={{ fontSize:10, color:'#fcd34d', marginTop:2, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(t.external_cost)} ج</div>}
-                      </div>
-                    : <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,.05)' }}>عادي</span>
-                  }
+                  <span style={{ fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:6, background:'rgba(59,91,254,.15)', color:'#7b9fff' }}>
+                    {t.wave}
+                  </span>
                 </Td>
-                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.distance||'—'} كم</Td>
-                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.time_mins||'—'} د</Td>
                 <Td>
-                  <select value={t.status} onChange={e=>updateTrip(t.id,e.target.value)} style={{ fontSize:11, padding:'3px 7px', borderRadius:7, border:'none', background:sc_+'25', color:sc_, fontFamily:'inherit', cursor:'pointer' }}>
-                    {['نشطة','معلقة','مكتملة','ملغية'].map(s=><option key={s}>{s}</option>)}
+                  {t.is_external ? (
+                    <div>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'rgba(168,85,247,.2)', color:'#d8b4fe' }}>
+                        🚗 خارجي
+                      </span>
+                      {parseFloat(t.external_cost || 0) > 0 && (
+                        <div style={{ fontSize:10, color:'#fcd34d', marginTop:2, fontFamily:"'JetBrains Mono',monospace" }}>
+                          {fmt(t.external_cost)} ج
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,.05)' }}>
+                      عادي
+                    </span>
+                  )}
+                </Td>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.distance || '—'} كم</Td>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{t.time_mins || '—'} د</Td>
+                <Td>
+                  <select
+                    value={t.status}
+                    onChange={e => updateTrip(t.id, e.target.value)}
+                    style={{ fontSize:11, padding:'3px 7px', borderRadius:7, border:'none', background:sc_+'25', color:sc_, fontFamily:'inherit', cursor:'pointer' }}
+                  >
+                    {['نشطة','معلقة','مكتملة','ملغية'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </Td>
                 <Td>
                   <div style={{ display:'flex', gap:4 }}>
                     <Btn onClick={() => setModal(t)} small color="#6b7280">✏</Btn>
-                    <Btn onClick={() => setConf({ msg:'حذف هذه الرحلة؟', ok:()=>deleteTrip(t.id) })} small color="#ef4444">🗑</Btn>
+                    <Btn onClick={() => setConf({ msg:'حذف هذه الرحلة؟', ok:() => deleteTrip(t.id) })} small color="#ef4444">🗑</Btn>
                   </div>
                 </Td>
               </Tr>
@@ -2099,54 +2141,139 @@ function Trips({ data, refetch }) {
 
 function TripForm({ data, trip, initialExternal = false, onClose, refetch }) {
   const [f, sF] = useState({
-  driver_id:'',
-  zone_id:'',
-  wave:'الموجة ١',
-  status:'معلقة',
-  distance:0,
-  time_mins:0,
-  is_external: initialExternal,
-  external_notes:'',
-  external_cost:0,
-  ...trip
-})
+    driver_id:'',
+    zone_id:'',
+    wave:'الموجة ١',
+    status:'معلقة',
+    distance:0,
+    time_mins:0,
+    is_external: initialExternal,
+    external_notes:'',
+    external_cost:0,
+    ...trip
+  })
+
   const set = k => v => sF(p => ({ ...p, [k]:v }))
+
   const save = async () => {
-    if (!f.driver_id || !f.zone_id) { toast.error('اختر مندوب ومنطقة'); return }
-    const payload = { ...f, driver_id:parseInt(f.driver_id), zone_id:parseInt(f.zone_id), distance:parseFloat(f.distance)||0, time_mins:parseInt(f.time_mins)||0, is_external:f.is_external||false, external_cost:parseFloat(f.external_cost)||0, external_notes:f.external_notes||'' }
+    if (!f.driver_id || !f.zone_id) {
+      toast.error('اختر مندوب ومنطقة')
+      return
+    }
+
+    const payload = {
+      ...f,
+      driver_id: parseInt(f.driver_id),
+      zone_id: parseInt(f.zone_id),
+      distance: parseFloat(f.distance) || 0,
+      time_mins: parseInt(f.time_mins) || 0,
+      is_external: !!f.is_external,
+      external_cost: parseFloat(f.external_cost) || 0,
+      external_notes: f.external_notes || ''
+    }
+
     let result
     if (trip) {
       result = await supabase.from('delivery_trips').update(payload).eq('id', trip.id)
     } else {
-      result = await supabase.from('delivery_trips').insert([{ ...payload, created_at:new Date().toISOString() }])
+      result = await supabase.from('delivery_trips').insert([{
+        ...payload,
+        created_at: new Date().toISOString()
+      }])
     }
-    if (result.error) { toast.error('حصل خطأ: ' + result.error.message); return }
-    toast.success('تم الحفظ'); onClose(); refetch()
+
+    if (result.error) {
+      toast.error('حصل خطأ: ' + result.error.message)
+      return
+    }
+
+    toast.success('تم الحفظ')
+    onClose()
+    refetch()
   }
+
   return (
     <div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-        <Fld label="المندوب" required><Sel value={f.driver_id||''} onChange={set('driver_id')} options={data.drivers.map(d=>({v:d.id,l:d.name}))}/></Fld>
-        <Fld label="المنطقة" required><Sel value={f.zone_id||''} onChange={set('zone_id')} options={data.zones.map(z=>({v:z.id,l:z.name}))}/></Fld>
-        <Fld label="الموجة"><Sel value={f.wave} onChange={set('wave')} options={['الموجة ١','الموجة ٢','الموجة ٣','الموجة ٤'].map(v=>({v,l:v}))}/></Fld>
-        <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={['نشطة','معلقة','مكتملة','ملغية'].map(v=>({v,l:v}))}/></Fld>
-        <Fld label="المسافة (كم)"><Inp type="number" value={f.distance} onChange={set('distance')} suffix="كم"/></Fld>
-        <Fld label="الوقت (دقيقة)"><Inp type="number" value={f.time_mins} onChange={set('time_mins')} suffix="د"/></Fld>
+        <Fld label="المندوب" required>
+          <Sel
+            value={f.driver_id || ''}
+            onChange={set('driver_id')}
+            options={[{ v:'', l:'اختر المندوب' }, ...data.drivers.map(d => ({ v:d.id, l:d.name }))]}
+          />
+        </Fld>
+
+        <Fld label="المنطقة" required>
+          <Sel
+            value={f.zone_id || ''}
+            onChange={set('zone_id')}
+            options={[{ v:'', l:'اختر المنطقة' }, ...data.zones.map(z => ({ v:z.id, l:z.name }))]}          />
+        </Fld>
+
+        <Fld label="الموجة">
+          <Sel
+            value={f.wave}
+            onChange={set('wave')}
+            options={['الموجة ١','الموجة ٢','الموجة ٣','الموجة ٤'].map(v => ({ v, l:v }))}
+          />
+        </Fld>
+
+        <Fld label="الحالة">
+          <Sel
+            value={f.status}
+            onChange={set('status')}
+            options={['نشطة','معلقة','مكتملة','ملغية'].map(v => ({ v, l:v }))}
+          />
+        </Fld>
+
+        <Fld label="المسافة (كم)">
+          <Inp type="number" value={f.distance} onChange={set('distance')} suffix="كم"/>
+        </Fld>
+
+        <Fld label="الوقت (دقيقة)">
+          <Inp type="number" value={f.time_mins} onChange={set('time_mins')} suffix="د"/>
+        </Fld>
       </div>
-      <div onClick={() => set('is_external')(!f.is_external)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:f.is_external?'rgba(168,85,247,.1)':'rgba(255,255,255,.04)', border:`1px solid ${f.is_external?'rgba(168,85,247,.3)':'rgba(255,255,255,.08)'}`, borderRadius:10, marginBottom:f.is_external?10:16, cursor:'pointer', transition:'all .2s' }}>
+
+      <div
+        onClick={() => set('is_external')(!f.is_external)}
+        style={{
+          display:'flex',
+          alignItems:'center',
+          gap:10,
+          padding:'10px 14px',
+          background:f.is_external ? 'rgba(168,85,247,.1)' : 'rgba(255,255,255,.04)',
+          border:`1px solid ${f.is_external ? 'rgba(168,85,247,.3)' : 'rgba(255,255,255,.08)'}`,
+          borderRadius:10,
+          marginBottom:f.is_external ? 10 : 16,
+          cursor:'pointer',
+          transition:'all .2s'
+        }}
+      >
         <Checkbox checked={f.is_external} onChange={() => set('is_external')(!f.is_external)}/>
-        <span style={{ fontSize:13, fontWeight:700, color:f.is_external?'#d8b4fe':'rgba(255,255,255,.7)' }}>🚗 مشوار خارجي</span>
-        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>مشوار خارج نطاق التوصيل المعتاد</span>
+        <span style={{ fontSize:13, fontWeight:700, color:f.is_external ? '#d8b4fe' : 'rgba(255,255,255,.7)' }}>
+          🚗 مشوار خارجي
+        </span>
       </div>
+
       {f.is_external && (
-        <div style={{ background:'rgba(168,85,247,.07)', border:'1px solid rgba(168,85,247,.2)', borderRadius:10, padding:14, marginBottom:14, animation:'fadeUp .2s ease' }}>
+        <div style={{ background:'rgba(168,85,247,.07)', border:'1px solid rgba(168,85,247,.2)', borderRadius:10, padding:14, marginBottom:14 }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-            <Fld label="تكلفة المشوار (ج)"><Inp type="number" value={f.external_cost} onChange={set('external_cost')} suffix="ج" prefix="💰"/></Fld>
-            <Fld label="ملاحظات المشوار"><Inp value={f.external_notes} onChange={set('external_notes')} placeholder="وجهة المشوار أو سببه..."/></Fld>
+            <Fld label="تكلفة المشوار (ج)">
+              <Inp type="number" value={f.external_cost} onChange={set('external_cost')} suffix="ج"/>
+            </Fld>
+
+            <Fld label="ملاحظات المشوار">
+              <Inp value={f.external_notes} onChange={set('external_notes')} placeholder="وصف أو وجهة المشوار..."/>
+            </Fld>
           </div>
         </div>
       )}
-      <div style={{ display:'flex', gap:10 }}><Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn><Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn></div>
+
+      <div style={{ display:'flex', gap:10 }}>
+        <Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn>
+        <Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn>
+      </div>
     </div>
   )
 }
