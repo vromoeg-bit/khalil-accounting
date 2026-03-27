@@ -1384,8 +1384,8 @@ function QuickTripForm({ data, seed, onClose, refetch }) {
     status: 'معلقة',
     distance: 0,
     time_mins: 0,
-    is_external: isDeliveryOrder(seed),
-    external_notes: seed ? `مشوار من الطلب #${seed.id} - ${seed.customer}` : '',
+    is_external: false,
+    external_notes: '',
     external_cost: 0,
   })
 
@@ -1999,6 +1999,11 @@ function VehicleForm({ veh, onClose, refetch }) {
 function Trips({ data, refetch }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
   const { trips } = data
+  const filteredTrips = trips.filter(t => {
+  if (tripFilter === 'external') return t.is_external
+  if (tripFilter === 'normal') return !t.is_external
+  return true
+})
   const TRIP_SC = { نشطة:'#10b981', مكتملة:'#6366f1', ملغية:'#ef4444', معلقة:'#f59e0b' }
   const updateTrip = async (id, status) => {
     const { error } = await supabase.from('delivery_trips').update({ status }).eq('id', id)
@@ -2013,9 +2018,26 @@ function Trips({ data, refetch }) {
   return (
     <div className="page-enter">
       {conf  && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
-      {modal && <Modal title={modal==='new'?'➕ رحلة جديدة':'✏ تعديل رحلة'} onClose={() => setModal(null)}>
-        <TripForm data={data} trip={modal==='new'?null:modal} onClose={() => setModal(null)} refetch={refetch}/>
-      </Modal>}
+      {modal && (
+  <Modal
+    title={
+      modal === 'new'
+        ? '➕ رحلة جديدة'
+        : modal === 'new_external'
+        ? '🚗 مشوار خارجي جديد'
+        : '✏ تعديل رحلة'
+    }
+    onClose={() => setModal(null)}
+  >
+    <TripForm
+      data={data}
+      trip={modal === 'new' || modal === 'new_external' ? null : modal}
+      initialExternal={modal === 'new_external'}
+      onClose={() => setModal(null)}
+      refetch={refetch}
+    />
+  </Modal>
+)}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:14 }}>
         <Kpi label="🕐 الكل" value={trips.length} color="#3b5bfe"/>
         <Kpi label="🟢 نشطة" value={trips.filter(t=>t.status==='نشطة').length} color="#10b981"/>
@@ -2023,10 +2045,18 @@ function Trips({ data, refetch }) {
         <Kpi label="⏳ معلقة" value={trips.filter(t=>t.status==='معلقة').length} color="#f59e0b"/>
         <Kpi label="🚗 خارجية" value={trips.filter(t=>t.is_external).length} color="#a855f7"/>
       </div>
-      <div style={{ marginBottom:12 }}><Btn onClick={() => setModal('new')} color="#3b5bfe">➕ رحلة جديدة</Btn></div>
+      <div style={{ marginBottom:12, display:'flex', gap:8, flexWrap:'wrap' }}>
+  <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ رحلة عادية</Btn>
+  <Btn onClick={() => setModal('new_external')} color="#a855f7">🚗 مشوار خارجي</Btn>
+</div>
+<div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+  <Btn onClick={() => setTripFilter('all')} small color={tripFilter==='all' ? '#3b5bfe' : 'rgba(255,255,255,.12)'}>الكل</Btn>
+  <Btn onClick={() => setTripFilter('normal')} small color={tripFilter==='normal' ? '#10b981' : 'rgba(255,255,255,.12)'}>رحلات عادية</Btn>
+  <Btn onClick={() => setTripFilter('external')} small color={tripFilter==='external' ? '#a855f7' : 'rgba(255,255,255,.12)'}>مشاوير خارجية</Btn>
+</div>
       <Card>
         <Tbl cols={['#','المندوب','المنطقة','الموجة','النوع','المسافة','الوقت','الحالة','إجراء']} rows={
-          trips.map(t => {
+          filteredTrips.map(t => {
             const drv  = data.drivers.find(d => d.id === t.driver_id)
             const zone = data.zones.find(z => z.id === t.zone_id)
             const sc_  = TRIP_SC[t.status] || '#6b7280'
@@ -2067,8 +2097,19 @@ function Trips({ data, refetch }) {
   )
 }
 
-function TripForm({ data, trip, onClose, refetch }) {
-  const [f, sF] = useState({ driver_id:'', zone_id:'', wave:'الموجة ١', status:'معلقة', distance:0, time_mins:0, is_external:false, external_notes:'', external_cost:0, ...trip })
+function TripForm({ data, trip, initialExternal = false, onClose, refetch }) {
+  const [f, sF] = useState({
+  driver_id:'',
+  zone_id:'',
+  wave:'الموجة ١',
+  status:'معلقة',
+  distance:0,
+  time_mins:0,
+  is_external: initialExternal,
+  external_notes:'',
+  external_cost:0,
+  ...trip
+})
   const set = k => v => sF(p => ({ ...p, [k]:v }))
   const save = async () => {
     if (!f.driver_id || !f.zone_id) { toast.error('اختر مندوب ومنطقة'); return }
@@ -2510,6 +2551,7 @@ function Settings({ data, refetch }) {
 // ══════════════════════════════════════════════════════
 function Users({ data, refetch, currentUser }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
+  const [tripFilter, setTripFilter] = useState('all')
   const { users } = data
   const toggleActive = async (u) => {
     if (u.id === currentUser.id) return
