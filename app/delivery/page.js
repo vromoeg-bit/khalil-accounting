@@ -103,45 +103,10 @@ const ROLES = {
   viewer:     { label:'متابع', color:'#6b7280' },
 }
 const PERMS = {
-  admin: ['all'],
-
-  supervisor: [
-    'orders_r','orders_w',
-    'drivers_r','drivers_w',
-    'zones_r','zones_w',
-    'vehicles_r',
-    'trips_r','trips_w',
-    'pricing_r','pricing_w',
-    'reports',
-    'daily_close_r','daily_close_w',
-    'daily_close_lock','daily_close_reopen',
-    'orders_edit_locked_day',
-    'audit_r',
-    'settlements_r','settlements_w',
-    'expenses_r','expenses_w',
-    'customer_ledger_r','customer_ledger_w',
-  ],
-
-  dispatcher: [
-    'orders_r','orders_w',
-    'drivers_r',
-    'zones_r',
-    'trips_r','trips_w',
-    'daily_close_r',
-    'settlements_r',
-    'expenses_r',
-  ],
-
-  viewer: [
-    'orders_r',
-    'drivers_r',
-    'zones_r',
-    'trips_r',
-    'reports',
-    'daily_close_r',
-    'audit_r',
-    'customer_ledger_r',
-  ],
+  admin:      ['all'],
+  supervisor: ['orders_r','orders_w','drivers_r','drivers_w','zones_r','zones_w','vehicles_r','trips_r','trips_w','pricing_r','pricing_w','reports'],
+  dispatcher: ['orders_r','orders_w','drivers_r','zones_r','trips_r','trips_w'],
+  viewer:     ['orders_r','drivers_r','zones_r','trips_r','reports'],
 }
 const NAV = [
   { id:'home',      label:'الرئيسية',    icon:'🏠', group:'main' },
@@ -198,18 +163,6 @@ const calcFee = (zones, zoneName, val, noFee) => {
   return Math.round(f * 10) / 10
 }
 
-const getDayClosing = (dailyClosings, dayKey) =>
-  (dailyClosings || []).find(r => r.report_date === dayKey)
-
-const isDayLocked = (dailyClosings, dayKey) =>
-  !!getDayClosing(dailyClosings, dayKey)?.is_locked
-
-const canEditDayOrders = (user, dailyClosings, dayKey) => {
-  if (!dayKey) return true
-  if (!isDayLocked(dailyClosings, dayKey)) return true
-  return can(user, 'orders_edit_locked_day')
-}
-
 // ✅ FIX #4: parseProducts handles all edge cases gracefully
 const parseProducts = (p) => {
   if (!p) return []
@@ -251,31 +204,6 @@ const exportCSV = (rows, cols, filename) => {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
-}
-
-const addAuditLog = async ({
-  action,
-  entity_type,
-  entity_id = null,
-  old_values = null,
-  new_values = null,
-  notes = '',
-}) => {
-  try {
-    await supabase.from('delivery_audit_logs').insert([{
-      action,
-      entity_type,
-      entity_id,
-      actor_name: DEFAULT_USER.name,
-      actor_role: DEFAULT_USER.role,
-      old_values,
-      new_values,
-      notes,
-      created_at: new Date().toISOString(),
-    }])
-  } catch (e) {
-    console.error('Audit log error:', e)
-  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1139,95 +1067,29 @@ function Orders({ data, refetch, user }) {
 
   // ✅ FIX #5: deleteOrder — setConf(null) only after successful delete
   const deleteOrder = async (id) => {
-  const currentOrder = orders.find(o => o.id === id)
-  const dayKey = toDayKey(currentOrder?.created_at)
-
-  if (!canEditDayOrders(user, data.dailyClosings, dayKey)) {
-    toast.error('لا يمكن حذف طلب من يوم مقفول')
-    return
+    const { error } = await supabase.from('delivery_orders').delete().eq('id', id)
+    if (error) { toast.error('حصل خطأ: ' + error.message); return }
+    setConf(null)
+    refetch()
+    toast.error('تم حذف الطلب')
   }
-
-  const { error } = await supabase.from('delivery_orders').delete().eq('id', id)
-  if (error) { toast.error('حصل خطأ: ' + error.message); return }
-
-  await addAuditLog({
-    action: 'order_deleted',
-    entity_type: 'order',
-    entity_id: id,
-    old_values: currentOrder || null,
-    new_values: null,
-    notes: `تم حذف الطلب #${id}`,
-  })
-
-  setConf(null)
-  refetch()
-  toast.error('تم حذف الطلب')
-}
 
   const bulkAssign = async () => {
-  if (!bulkDrv || !selected.length) return
-
-  const lockedSelected = orders.filter(
-    o => selected.includes(o.id) && isDayLocked(data.dailyClosings, toDayKey(o.created_at))
-  )
-
-  if (lockedSelected.length > 0 && !can(user, 'orders_edit_locked_day')) {
-    toast.error('في طلبات من أيام مقفولة ضمن التحديد الحالي')
-    return
+    if (!bulkDrv || !selected.length) return
+    const { error } = await supabase.from('delivery_orders').update({ driver_id:parseInt(bulkDrv), status:'تم تعيين المندوب' }).in('id', selected)
+    if (error) { toast.error('حصل خطأ: ' + error.message); return }
+    setSel([]); setBulkDrv(''); setShowBulk(false); refetch(); toast.success(`تم تعيين ${selected.length} طلب`)
   }
-
-  const { error } = await supabase
-    .from('delivery_orders')
-    .update({ driver_id: parseInt(bulkDrv), status:'تم تعيين المندوب' })
-    .in('id', selected)
-
-  if (error) { toast.error('حصل خطأ: ' + error.message); return }
-
-  await addAuditLog({
-    action: 'orders_bulk_assigned',
-    entity_type: 'order_bulk',
-    entity_id: null,
-    old_values: null,
-    new_values: { order_ids: selected, driver_id: parseInt(bulkDrv) },
-    notes: `تم تعيين ${selected.length} طلب للمندوب ${drivers.find(d => d.id === parseInt(bulkDrv))?.name || bulkDrv}`,
-  })
-
-  setSel([])
-  setBulkDrv('')
-  setShowBulk(false)
-  refetch()
-  toast.success(`تم تعيين ${selected.length} طلب`)
-}
 
   // ✅ FIX #5: bulkDelete — setSel only after successful delete
   const bulkDelete = async () => {
-  const lockedSelected = orders.filter(
-    o => selected.includes(o.id) && isDayLocked(data.dailyClosings, toDayKey(o.created_at))
-  )
-
-  if (lockedSelected.length > 0 && !can(user, 'orders_edit_locked_day')) {
-    toast.error('في طلبات من أيام مقفولة ضمن التحديد الحالي')
-    return
+    const { error } = await supabase.from('delivery_orders').delete().in('id', selected)
+    if (error) { toast.error('حصل خطأ: ' + error.message); return }
+    setSel([])
+    setConf(null)
+    refetch()
+    toast.error(`تم حذف ${selected.length} طلب`)
   }
-
-  const oldOrders = orders.filter(o => selected.includes(o.id))
-  const { error } = await supabase.from('delivery_orders').delete().in('id', selected)
-  if (error) { toast.error('حصل خطأ: ' + error.message); return }
-
-  await addAuditLog({
-    action: 'orders_bulk_deleted',
-    entity_type: 'order_bulk',
-    entity_id: null,
-    old_values: oldOrders,
-    new_values: null,
-    notes: `تم حذف ${selected.length} طلب دفعة واحدة`,
-  })
-
-  setSel([])
-  setConf(null)
-  refetch()
-  toast.error(`تم حذف ${selected.length} طلب`)
-}
 
   const exportOrders = () => {
     exportCSV(
@@ -1244,15 +1106,8 @@ function Orders({ data, refetch, user }) {
   return (
     <div className="page-enter">
       {conf    && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
-      {modal && (
-  <OrderModal
-    data={data}
-    user={user}
-    order={modal === 'new' ? null : modal}
-    onClose={() => setModal(null)}
-    refetch={refetch}
-  />
-)}      {invoice && <InvoiceModal order={invoice} onClose={() => setInvoice(null)}/>}
+      {modal   && <OrderModal data={data} order={modal === 'new' ? null : modal} onClose={() => setModal(null)} refetch={refetch}/>}
+      {invoice && <InvoiceModal order={invoice} onClose={() => setInvoice(null)}/>}
         {tripOpen && (
   <Modal title="🚚 إنشاء مشوار" onClose={() => { setTripOpen(false); setTripSeed(null) }}>
     <QuickTripForm
@@ -1407,7 +1262,7 @@ function Orders({ data, refetch, user }) {
 // ══════════════════════════════════════════════════════
 //  ORDER MODAL
 // ══════════════════════════════════════════════════════
-function OrderModal({ data, user, order, onClose, refetch }) {
+function OrderModal({ data, order, onClose, refetch }) {
   const def = { customer:'', phone:'', address:'', zone:'', value:'', products:[], status:'استُلم الطلب', driver_id:'', notes:'', customer_type:'عميل', payment_method:'كاش', due_date:'', no_fee:false, fail_reason:'', cancel_reason:'', return_reason:'' }
   const [f, sF] = useState({ ...def, ...(order||{}), products: parseProducts(order?.products) })
   const [err, sE] = useState('')
@@ -1416,21 +1271,14 @@ function OrderModal({ data, user, order, onClose, refetch }) {
   const fee = calcFee(data.zones, f.zone, f.value, f.no_fee)
 
   const save = async () => {
-  const targetDayKey = toDayKey(order?.created_at || new Date())
+    if (!f.customer?.trim()) { sE('❌ يجب ملء اسم العميل'); return }
+    if (!f.zone) { sE('❌ يجب اختيار المنطقة'); return }
+    if (!f.value || parseFloat(f.value) <= 0) { sE('❌ يجب ملء القيمة (أكبر من صفر)'); return }
+    if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) { sE('❌ يجب كتابة سبب فشل التسليم'); return }
+    if (f.status === 'ملغي' && !f.cancel_reason?.trim()) { sE('❌ يجب كتابة سبب الإلغاء'); return }
+    if (f.status === 'مرتجع' && !f.return_reason?.trim()) { sE('❌ يجب كتابة سبب المرتجع'); return }
 
-  if (!canEditDayOrders(user, data.dailyClosings, targetDayKey)) {
-    sE('❌ اليوم ده متقفل، ومش مسموح بتعديل أو إضافة طلبات عليه')
-    return
-  }
-
-  if (!f.customer?.trim()) { sE('❌ يجب ملء اسم العميل'); return }
-  if (!f.zone) { sE('❌ يجب اختيار المنطقة'); return }
-  if (!f.value || parseFloat(f.value) <= 0) { sE('❌ يجب ملء القيمة (أكبر من صفر)'); return }
-  if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) { sE('❌ يجب كتابة سبب فشل التسليم'); return }
-  if (f.status === 'ملغي' && !f.cancel_reason?.trim()) { sE('❌ يجب كتابة سبب الإلغاء'); return }
-  if (f.status === 'مرتجع' && !f.return_reason?.trim()) { sE('❌ يجب كتابة سبب المرتجع'); return }
-
-  setSaving(true); sE('')
+    setSaving(true); sE('')
 
     try {
       const payload = {
@@ -1453,20 +1301,11 @@ function OrderModal({ data, user, order, onClose, refetch }) {
         return_reason: f.return_reason || '',
       }
 
-     let result
+      let result
       if (order) {
-        result = await supabase
-          .from('delivery_orders')
-          .update(payload)
-          .eq('id', order.id)
-          .select()
-          .single()
+        result = await supabase.from('delivery_orders').update(payload).eq('id', order.id)
       } else {
-        result = await supabase
-          .from('delivery_orders')
-          .insert([{ ...payload, created_at: new Date().toISOString() }])
-          .select()
-          .single()
+        result = await supabase.from('delivery_orders').insert([{ ...payload, created_at: new Date().toISOString() }])
       }
 
       if (result.error) {
@@ -1477,16 +1316,6 @@ function OrderModal({ data, user, order, onClose, refetch }) {
       }
 
       toast.success(order ? '✅ تم تعديل الطلب بنجاح' : '✅ تم إضافة الطلب بنجاح')
-        await addAuditLog({
-        action: order ? 'order_updated' : 'order_created',
-        entity_type: 'order',
-        entity_id: result.data?.id || order?.id || null,
-        old_values: order || null,
-        new_values: result.data || payload,
-        notes: order
-          ? `تم تعديل الطلب #${order.id}`
-          : `تم إنشاء طلب جديد للعميل ${payload.customer}`,
-      })
       setSaving(false)
       onClose()
       refetch()
@@ -1850,29 +1679,10 @@ function Drivers({ data, refetch, user }) {
   const { drivers } = data
 
   const updateStatus = async (id, status) => {
-  const currentOrder = orders.find(o => o.id === id)
-  const dayKey = toDayKey(currentOrder?.created_at)
-
-  if (!canEditDayOrders(user, data.dailyClosings, dayKey)) {
-    toast.error('اليوم ده متقفل، ومش مسموح تغيير حالة الطلب')
-    return
+    const { error } = await supabase.from('delivery_drivers').update({ status }).eq('id', id)
+    if (error) { toast.error('حصل خطأ: ' + error.message); return }
+    refetch(); toast.info('تم تحديث حالة المندوب')
   }
-
-  const { error } = await supabase.from('delivery_orders').update({ status }).eq('id', id)
-  if (error) { toast.error('حصل خطأ: ' + error.message); return }
-
-  await addAuditLog({
-    action: 'order_status_changed',
-    entity_type: 'order',
-    entity_id: id,
-    old_values: { status: currentOrder?.status || null },
-    new_values: { status },
-    notes: `تم تغيير حالة الطلب #${id} من ${currentOrder?.status || '—'} إلى ${status}`,
-  })
-
-  refetch()
-  toast.success('تم تحديث الحالة')
-}
 
   const deleteDriver = async (id) => {
     const { error } = await supabase.from('delivery_drivers').delete().eq('id', id)
@@ -3608,142 +3418,47 @@ function DailyClosing({ data, refetch }) {
   const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
   const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
   const externalTripsCost = sumValues(externalTrips, 'external_cost')
-  const buildClosingPayload = () => ({
-  report_date: selectedDate,
-  total_orders: dayOrders.length,
-  delivered_orders: delivered.length,
-  failed_orders: failed.length,
-  returned_orders: returned.length,
-  cancelled_orders: cancelled.length,
-  active_orders: active.length,
-  customer_orders: customerOrders.length,
-  delivery_orders: deliveryOrders.length,
-  revenue,
-  delivery_fees: deliveryFees,
-  cash_total: cashTotal,
-  visa_total: visaTotal,
-  wallet_total: walletTotal,
-  credit_total: creditTotal,
-  external_trips_count: externalTrips.length,
-  external_trips_cost: externalTripsCost,
-  notes: notes || '',
-  closed_by: existingClose?.closed_by || DEFAULT_USER.name,
-  closed_at: existingClose?.closed_at || new Date().toISOString(),
-  is_locked: existingClose?.is_locked || false,
-  locked_at: existingClose?.locked_at || null,
-  locked_by: existingClose?.locked_by || null,
-  reopened_at: existingClose?.reopened_at || null,
-  reopened_by: existingClose?.reopened_by || null,
-  updated_at: new Date().toISOString(),
-})
 
   const saveClosing = async () => {
-  setSaving(true)
+    setSaving(true)
 
-  const payload = buildClosingPayload()
-
-  const { error } = await supabase
-    .from('delivery_daily_closings')
-    .upsert([payload], { onConflict: 'report_date' })
-
-  setSaving(false)
-
-  if (error) {
-    toast.error('حصل خطأ أثناء حفظ التقفيل: ' + error.message)
-    return
-  }
-
-  await addAuditLog({
-    action: existingClose ? 'daily_close_updated' : 'daily_close_created',
-    entity_type: 'daily_close',
-    entity_id: null,
-    old_values: existingClose || null,
-    new_values: payload,
-    notes: `تم حفظ تقفيل يوم ${selectedDate}`,
-  })
-
-  toast.success(existingClose ? 'تم تحديث التقفيل اليومي ✅' : 'تم حفظ التقفيل اليومي ✅')
-  refetch()
-}
-
-const lockDay = async () => {
-  setSaving(true)
-
-  const payload = {
-    ...buildClosingPayload(),
-    is_locked: true,
-    locked_at: new Date().toISOString(),
-    locked_by: DEFAULT_USER.name,
-    reopened_at: null,
-    reopened_by: null,
-  }
-
-  const { error } = await supabase
-    .from('delivery_daily_closings')
-    .upsert([payload], { onConflict: 'report_date' })
-
-  setSaving(false)
-
-  if (error) {
-    toast.error('حصل خطأ أثناء قفل اليوم: ' + error.message)
-    return
-  }
-
-  await addAuditLog({
-    action: 'daily_close_locked',
-    entity_type: 'daily_close',
-    entity_id: null,
-    old_values: existingClose || null,
-    new_values: payload,
-    notes: `تم قفل يوم ${selectedDate} بواسطة ${DEFAULT_USER.name}`,
-  })
-
-  toast.success('تم قفل اليوم بنجاح 🔒')
-  refetch()
-}
-
-const reopenDay = async () => {
-  if (!can(DEFAULT_USER, 'daily_close_reopen')) {
-    toast.error('ليس لديك صلاحية إعادة فتح اليوم')
-    return
-  }
-
-  setSaving(true)
-
-  const { error } = await supabase
-    .from('delivery_daily_closings')
-    .update({
-      is_locked: false,
-      reopened_at: new Date().toISOString(),
-      reopened_by: DEFAULT_USER.name,
+    const payload = {
+      report_date: selectedDate,
+      total_orders: dayOrders.length,
+      delivered_orders: delivered.length,
+      failed_orders: failed.length,
+      returned_orders: returned.length,
+      cancelled_orders: cancelled.length,
+      active_orders: active.length,
+      customer_orders: customerOrders.length,
+      delivery_orders: deliveryOrders.length,
+      revenue,
+      delivery_fees: deliveryFees,
+      cash_total: cashTotal,
+      visa_total: visaTotal,
+      wallet_total: walletTotal,
+      credit_total: creditTotal,
+      external_trips_count: externalTrips.length,
+      external_trips_cost: externalTripsCost,
+      notes: notes || '',
+      closed_by: DEFAULT_USER.name,
       updated_at: new Date().toISOString(),
-    })
-    .eq('report_date', selectedDate)
+    }
 
-  setSaving(false)
+    const { error } = await supabase
+      .from('delivery_daily_closings')
+      .upsert([payload], { onConflict: 'report_date' })
 
-  if (error) {
-    toast.error('حصل خطأ أثناء إعادة فتح اليوم: ' + error.message)
-    return
+    setSaving(false)
+
+    if (error) {
+      toast.error('حصل خطأ أثناء حفظ التقفيل: ' + error.message)
+      return
+    }
+
+    toast.success(existingClose ? 'تم تحديث التقفيل اليومي ✅' : 'تم حفظ التقفيل اليومي ✅')
+    refetch()
   }
-
-  await addAuditLog({
-    action: 'daily_close_reopened',
-    entity_type: 'daily_close',
-    entity_id: null,
-    old_values: existingClose || null,
-    new_values: {
-      ...existingClose,
-      is_locked: false,
-      reopened_at: new Date().toISOString(),
-      reopened_by: DEFAULT_USER.name,
-    },
-    notes: `تمت إعادة فتح يوم ${selectedDate} بواسطة ${DEFAULT_USER.name}`,
-  })
-
-  toast.success('تمت إعادة فتح اليوم 🔓')
-  refetch()
-}
 
   const exportDailyClose = () => {
     exportCSV(
@@ -3799,36 +3514,21 @@ const reopenDay = async () => {
           </Fld>
 
           <Fld label="حالة اليوم">
-  <div
-    style={{
-      background: existingClose
-        ? existingClose.is_locked
-          ? 'rgba(239,68,68,.12)'
-          : 'rgba(16,185,129,.12)'
-        : 'rgba(245,158,11,.12)',
-      border: `1px solid ${
-        existingClose
-          ? existingClose.is_locked
-            ? 'rgba(239,68,68,.3)'
-            : 'rgba(16,185,129,.3)'
-          : 'rgba(245,158,11,.3)'
-      }`,
-      borderRadius:10,
-      padding:'10px 14px',
-      color: existingClose
-        ? existingClose.is_locked
-          ? '#fca5a5'
-          : '#6ee7b7'
-        : '#fcd34d',
-      fontSize:13,
-      fontWeight:800
-    }}
-  >
-    {!existingClose && '🟡 اليوم ده لسه غير محفوظ'}
-    {existingClose && !existingClose.is_locked && '✅ اليوم محفوظ لكن لسه مفتوح للتعديل'}
-    {existingClose && existingClose.is_locked && '🔒 اليوم محفوظ ومقفول'}
-  </div>
-</Fld>
+            <div
+              style={{
+                background: existingClose ? 'rgba(16,185,129,.12)' : 'rgba(245,158,11,.12)',
+                border: `1px solid ${existingClose ? 'rgba(16,185,129,.3)' : 'rgba(245,158,11,.3)'}`,
+                borderRadius:10,
+                padding:'10px 14px',
+                color: existingClose ? '#6ee7b7' : '#fcd34d',
+                fontSize:13,
+                fontWeight:800
+              }}
+            >
+              {existingClose ? '✅ اليوم ده متقفّل ومحفوظ' : '🟡 اليوم ده لسه غير محفوظ'}
+            </div>
+          </Fld>
+        </div>
 
         <Fld label="ملاحظات التقفيل">
           <textarea
@@ -3852,60 +3552,9 @@ const reopenDay = async () => {
         </Fld>
 
         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-  <Btn onClick={saveClosing} color="#10b981" loading={saving}>
-    💾 حفظ التقفيل اليومي
-  </Btn>
-
-  {existingClose && !existingClose.is_locked && (
-    <Btn onClick={lockDay} color="#ef4444" loading={saving}>
-      🔒 قفل اليوم
-    </Btn>
-  )}
-
-  {existingClose?.is_locked && (
-    <Btn onClick={reopenDay} color="#f59e0b" loading={saving}>
-      🔓 إعادة فتح اليوم
-    </Btn>
-  )}
-
-  <Btn onClick={exportDailyClose} color="#3b5bfe">
-    📥 تصدير تقرير اليوم
-  </Btn>
-</div>
-
-{existingClose && (
-  <div style={{ marginTop:12, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:10 }}>
-    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:10, padding:'10px 12px' }}>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', marginBottom:3 }}>تم الحفظ بواسطة</div>
-      <div style={{ fontSize:13, fontWeight:800, color:'white' }}>
-        {existingClose.closed_by || '—'}
-      </div>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>
-        {existingClose.closed_at ? `${fmtDate(existingClose.closed_at)} - ${fmtTime(existingClose.closed_at)}` : '—'}
-      </div>
-    </div>
-
-    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:10, padding:'10px 12px' }}>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', marginBottom:3 }}>تم قفل اليوم بواسطة</div>
-      <div style={{ fontSize:13, fontWeight:800, color:'#fca5a5' }}>
-        {existingClose.locked_by || '—'}
-      </div>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>
-        {existingClose.locked_at ? `${fmtDate(existingClose.locked_at)} - ${fmtTime(existingClose.locked_at)}` : '—'}
-      </div>
-    </div>
-
-    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:10, padding:'10px 12px' }}>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', marginBottom:3 }}>آخر إعادة فتح</div>
-      <div style={{ fontSize:13, fontWeight:800, color:'#fcd34d' }}>
-        {existingClose.reopened_by || '—'}
-      </div>
-      <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>
-        {existingClose.reopened_at ? `${fmtDate(existingClose.reopened_at)} - ${fmtTime(existingClose.reopened_at)}` : '—'}
-      </div>
-    </div>
-  </div>
-)}
+          <Btn onClick={saveClosing} color="#10b981" loading={saving}>💾 حفظ التقفيل اليومي</Btn>
+          <Btn onClick={exportDailyClose} color="#3b5bfe">📥 تصدير تقرير اليوم</Btn>
+        </div>
       </Card>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:14, marginBottom:14 }}>
