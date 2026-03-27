@@ -92,8 +92,8 @@ const SC = {
   'مرتجع':           { bg:'rgba(245,158,11,0.15)', c:'#fcd34d', d:'#f59e0b', icon:'↩️' },
   'ملغي':            { bg:'rgba(107,114,128,0.15)',c:'#d1d5db', d:'#9ca3af', icon:'🚫' },
 }
-const PAY_C = { كاش:'#10b981', فيزا:'#3b82f6', محفظة:'#a855f7', أجل:'#f59e0b' }
-const PAY_ICONS = { كاش:'💵', فيزا:'💳', محفظة:'📱', أجل:'🔖' }
+const PAY_C = { كاش:'#10b981', فيزا:'#3b82f6', محفظة:'#a855f7', انستاباي:'#14b8a6', أجل:'#f59e0b' }
+const PAY_ICONS = { كاش:'💵', فيزا:'💳', محفظة:'📱', انستاباي:'🏦', أجل:'🔖' }
 const isDeliveryOrder = (o) => o.customer_type === 'دليفري'
 const isCustomerOrder = (o) => !isDeliveryOrder(o)
 const ROLES = {
@@ -970,9 +970,11 @@ const delivRate  = orders.length ? Math.round(delivered.length/orders.length*100
           <Card style={{ flex:'0 0 auto' }}>
             <SectionTitle>💳 التحصيل</SectionTitle>
             <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-              <DonutChart data={['كاش','فيزا','محفظة','أجل'].map(m => ({ v: orders.filter(o=>o.payment_method===m).length, color:PAY_C[m] }))} size={80}/>
+              <DonutChart data={['كاش','فيزا','محفظة','انستاباي','أجل']
+.map(m => ({ v: orders.filter(o=>o.payment_method===m).length, color:PAY_C[m] }))} size={80}/>
               <div style={{ flex:1 }}>
-                {['كاش','فيزا','محفظة','أجل'].map(m => {
+                {['كاش','فيزا','محفظة','انستاباي','أجل']
+.map(m => {
                   const cnt = orders.filter(o => o.payment_method === m).length
                   return (
                     <div key={m} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5, fontSize:12 }}>
@@ -1143,7 +1145,8 @@ function Orders({ data, refetch, user }) {
           <option value=''>كل المناطق</option>{data.zones.map(z=><option key={z.id}>{z.name}</option>)}
         </select>
         <select value={fPay} onChange={e=>setFPay(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
-          <option value=''>كل التحصيل</option>{['كاش','فيزا','محفظة','أجل'].map(m=><option key={m}>{m}</option>)}
+          <option value=''>كل التحصيل</option>{['كاش','فيزا','محفظة','انستاباي','أجل']
+.map(m=><option key={m}>{m}</option>)}
         </select>
         <select value={fType} onChange={e=>setFType(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
   <option value=''>كل الأنواع</option>
@@ -1336,7 +1339,7 @@ function OrderModal({ data, order, onClose, refetch }) {
         <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
         <Fld label="القيمة (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
         <Fld label="نوع العميل"><Sel value={f.customer_type} onChange={set('customer_type')} options={[{v:'عميل',l:'👤 عميل'},{v:'دليفري',l:'🚚 دليفري'}]}/></Fld>
-        <Fld label="التحصيل"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
+        <Fld label="التحصيل"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','انستاباي','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
         {f.payment_method === 'أجل' && <Fld label="تاريخ الاستحقاق"><Inp type="date" value={f.due_date} onChange={set('due_date')}/></Fld>}
         <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={ALL_STATUS.map(v=>({v,l:`${SC[v]?.icon||''} ${v}`}))}/></Fld>
         <Fld label="المندوب"><Sel value={f.driver_id||''} onChange={set('driver_id')} options={[{v:'',l:'بدون تعيين'}, ...data.drivers.map(d=>({v:d.id,l:`${d.name} (${d.zone})`}))]}/></Fld>
@@ -1640,7 +1643,7 @@ const delivOrders = orders.filter(isDeliveryOrder)
         </Card>
         <Card>
           <SectionTitle>💳 إيرادات بطريقة الدفع</SectionTitle>
-          {['كاش','فيزا','محفظة','أجل'].map(m => {
+          {['كاش','فيزا','محفظة','انستاباي','أجل'].map(m => {
             const rev = orders.filter(o=>o.payment_method===m&&o.status==='تم التسليم').reduce((s,o)=>s+parseFloat(o.value||0),0)
             return (
               <div key={m} style={{ marginBottom:12 }}>
@@ -2473,7 +2476,7 @@ const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.d
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>💳 توزيع التحصيل</SectionTitle>
-          {['كاش','فيزا','محفظة','أجل'].map(m => {
+          {['كاش','فيزا','محفظة','انستاباي','أجل'].map(m => {
             const cnt = orders.filter(o=>o.payment_method===m).length
             const cl  = PAY_C[m] || '#6b7280'
             return (
@@ -3413,11 +3416,12 @@ function DailyClosing({ data, refetch }) {
 
   const revenue = sumValues(delivered, 'value')
   const deliveryFees = sumValues(dayOrders, 'delivery_fee')
-  const cashTotal = sumValues(delivered.filter(o => o.payment_method === 'كاش'), 'value')
-  const visaTotal = sumValues(delivered.filter(o => o.payment_method === 'فيزا'), 'value')
-  const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
-  const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
-  const externalTripsCost = sumValues(externalTrips, 'external_cost')
+  const cashTotal = sumValues(delivered.filter(o => o.payment_method === 'كاش'), 'value') 
+const visaTotal = sumValues(delivered.filter(o => o.payment_method === 'فيزا'), 'value')
+const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
+const instapayTotal = sumValues(delivered.filter(o => o.payment_method === 'انستاباي'), 'value')
+const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
+const externalTripsCost = sumValues(externalTrips, 'external_cost')
 
   const saveClosing = async () => {
     setSaving(true)
@@ -3437,6 +3441,7 @@ function DailyClosing({ data, refetch }) {
       cash_total: cashTotal,
       visa_total: visaTotal,
       wallet_total: walletTotal,
+      instapay_total: instapayTotal,
       credit_total: creditTotal,
       external_trips_count: externalTrips.length,
       external_trips_cost: externalTripsCost,
@@ -3477,6 +3482,7 @@ function DailyClosing({ data, refetch }) {
         ['كاش', cashTotal],
         ['فيزا', visaTotal],
         ['محفظة', walletTotal],
+        ['انستاباي', instapayTotal],
         ['أجل', creditTotal],
         ['مشاوير خارجية', externalTrips.length],
         ['تكلفة المشاوير الخارجية', externalTripsCost],
@@ -3564,6 +3570,7 @@ function DailyClosing({ data, refetch }) {
             ['كاش', cashTotal, '#10b981'],
             ['فيزا', visaTotal, '#3b82f6'],
             ['محفظة', walletTotal, '#a855f7'],
+            ['انستاباي', instapayTotal, '#14b8a6'],
             ['أجل', creditTotal, '#f59e0b'],
           ].map(([label, value, color]) => (
             <div key={label} style={{ marginBottom:10 }}>
@@ -3608,7 +3615,7 @@ function DailyClosing({ data, refetch }) {
       <Card>
         <SectionTitle>🗂 أرشيف التقفيل اليومي</SectionTitle>
         <Tbl
-          cols={['التاريخ','إجمالي الطلبات','تم التسليم','الإيراد','رسوم التوصيل','طلبات عملاء','طلبات دليفري','خارجي','ملاحظات']}
+          cols={['التاريخ','إجمالي الطلبات','تم التسليم','الإيراد','رسوم التوصيل','طلبات عملاء','طلبات دليفري','انستاباي','خارجي','ملاحظات']}
           rows={history.map(row => (
             <Tr key={row.id || row.report_date}>
               <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>
@@ -3619,7 +3626,7 @@ function DailyClosing({ data, refetch }) {
               <Td style={{ color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.revenue || 0)} ج</Td>
               <Td style={{ color:'#a855f7', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.delivery_fees || 0)} ج</Td>
               <Td style={{ color:'#67e8f9', fontFamily:"'JetBrains Mono',monospace" }}>{row.customer_orders || 0}</Td>
-              <Td style={{ color:'#d8b4fe', fontFamily:"'JetBrains Mono',monospace" }}>{row.delivery_orders || 0}</Td>
+              <Td style={{ color:'#14b8a6', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.instapay_total || 0)} ج</Td>
               <Td style={{ color:'#f97316', fontFamily:"'JetBrains Mono',monospace" }}>{row.external_trips_count || 0}</Td>
               <Td style={{ color:'rgba(255,255,255,.45)', fontSize:12 }}>{row.notes || '—'}</Td>
             </Tr>
