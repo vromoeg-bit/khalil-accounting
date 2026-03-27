@@ -120,6 +120,7 @@ const NAV = [
   { id:'trips',     label:'الرحلات',     icon:'🕐', group:'ops' },
   { id:'shifts',    label:'الشفتات',     icon:'📅', group:'config' },
   { id:'pricing',   label:'الأسعار',     icon:'💰', group:'config' },
+  { id:'daily_close', label:'التقفيل اليومي', icon:'🧾', group:'config' },
   { id:'report',    label:'التقارير',    icon:'📊', group:'config' },
   { id:'notifs',    label:'التنبيهات',   icon:'🔔', group:'config' },
   { id:'settings',  label:'الإعدادات',   icon:'⚙', group:'config' },
@@ -140,6 +141,18 @@ const fmtRelative = d => {
   if (min < 1440) return `${Math.floor(min/60)} ساعة`
   return `${Math.floor(min/1440)} يوم`
 }
+
+const toDayKey = (d) => {
+  if (!d) return ''
+  const x = new Date(d)
+  const y = x.getFullYear()
+  const m = String(x.getMonth() + 1).padStart(2, '0')
+  const day = String(x.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const sumValues = (list, field) =>
+  list.reduce((s, item) => s + parseFloat(item?.[field] || 0), 0)
 
 const calcFee = (zones, zoneName, val, noFee) => {
   if (noFee) return 0
@@ -637,15 +650,16 @@ function Modal({ title, onClose, children, footer, wide }) {
 // ══════════════════════════════════════════════════════
 function useData() {
   const [data, setData] = useState({
-    orders:[],
-    drivers:[],
-    zones:[],
-    vehicles:[],
-    trips:[],
-    users:[],
-    settings:{},
-    shifts:[]
-  })
+  orders:[],
+  drivers:[],
+  zones:[],
+  vehicles:[],
+  trips:[],
+  users:[],
+  settings:{},
+  shifts:[],
+  dailyClosings:[]
+})
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -655,35 +669,48 @@ function useData() {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
 
-    const [ord, drv, zon, veh, trp, usr, set, shf] = await Promise.all([
-      supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
-      supabase.from('delivery_drivers').select('*'),
-      supabase.from('delivery_zones').select('*'),
-      supabase.from('delivery_vehicles').select('*'),
-      supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
-      supabase.from('delivery_users').select('*'),
-      supabase.from('delivery_settings').select('*').maybeSingle(),
-      supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
-    ])
+    const [ord, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
+  supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
+  supabase.from('delivery_drivers').select('*'),
+  supabase.from('delivery_zones').select('*'),
+  supabase.from('delivery_vehicles').select('*'),
+  supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
+  supabase.from('delivery_users').select('*'),
+  supabase.from('delivery_settings').select('*').maybeSingle(),
+  supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
+  supabase.from('delivery_daily_closings').select('*').order('report_date', { ascending:false }),
+])
 
-    if (ord.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error) {
-      console.error('Supabase error:', { ord:ord.error, drv:drv.error, zon:zon.error, veh:veh.error, trp:trp.error, usr:usr.error, set:set.error, shf:shf.error })
+    if (ord.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
+      console.error('Supabase error:', {
+  ord: ord.error,
+  drv: drv.error,
+  zon: zon.error,
+  veh: veh.error,
+  trp: trp.error,
+  usr: usr.error,
+  set: set.error,
+  shf: shf.error,
+  dcl: dcl.error
+})
+
       toast.error('حصل خطأ أثناء تحميل البيانات')
     } else {
-      setData({
-        orders: ord.data || [],
-        drivers: drv.data || [],
-        zones: zon.data || [],
-        vehicles: veh.data || [],
-        trips: trp.data || [],
-        users: usr.data || [],
-        settings: set.data || {
-          companyName:'دليفري خليل الحلواني',
-          unassignedAlert:15,
-          defaultSLA:40
-        },
-        shifts: shf.data || [],
-      })
+     setData({
+  orders: ord.data || [],
+  drivers: drv.data || [],
+  zones: zon.data || [],
+  vehicles: veh.data || [],
+  trips: trp.data || [],
+  users: usr.data || [],
+  settings: set.data || {
+    companyName:'دليفري خليل الحلواني',
+    unassignedAlert:15,
+    defaultSLA:40
+  },
+  shifts: shf.data || [],
+  dailyClosings: dcl.data || [],
+})
       setLastUpdate(new Date())
     }
 
@@ -3182,6 +3209,257 @@ function DailyShifts({ data, refetch }) {
 }
 
 
+function DailyClosing({ data, refetch }) {
+  const [selectedDate, setSelectedDate] = useState(toDayKey(new Date()))
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const dayOrders = useMemo(
+    () => data.orders.filter(o => toDayKey(o.created_at) === selectedDate),
+    [data.orders, selectedDate]
+  )
+
+  const dayTrips = useMemo(
+    () => data.trips.filter(t => toDayKey(t.created_at) === selectedDate),
+    [data.trips, selectedDate]
+  )
+
+  const existingClose = useMemo(
+    () => (data.dailyClosings || []).find(r => r.report_date === selectedDate),
+    [data.dailyClosings, selectedDate]
+  )
+
+  useEffect(() => {
+    setNotes(existingClose?.notes || '')
+  }, [existingClose, selectedDate])
+
+  const delivered = dayOrders.filter(o => o.status === 'تم التسليم')
+  const failed = dayOrders.filter(o => o.status === 'فشل التسليم')
+  const returned = dayOrders.filter(o => o.status === 'مرتجع')
+  const cancelled = dayOrders.filter(o => o.status === 'ملغي')
+  const active = dayOrders.filter(o => !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
+  const customerOrders = dayOrders.filter(isCustomerOrder)
+  const deliveryOrders = dayOrders.filter(isDeliveryOrder)
+  const externalTrips = dayTrips.filter(t => t.is_external)
+
+  const revenue = sumValues(delivered, 'value')
+  const deliveryFees = sumValues(dayOrders, 'delivery_fee')
+  const cashTotal = sumValues(delivered.filter(o => o.payment_method === 'كاش'), 'value')
+  const visaTotal = sumValues(delivered.filter(o => o.payment_method === 'فيزا'), 'value')
+  const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
+  const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
+  const externalTripsCost = sumValues(externalTrips, 'external_cost')
+
+  const saveClosing = async () => {
+    setSaving(true)
+
+    const payload = {
+      report_date: selectedDate,
+      total_orders: dayOrders.length,
+      delivered_orders: delivered.length,
+      failed_orders: failed.length,
+      returned_orders: returned.length,
+      cancelled_orders: cancelled.length,
+      active_orders: active.length,
+      customer_orders: customerOrders.length,
+      delivery_orders: deliveryOrders.length,
+      revenue,
+      delivery_fees: deliveryFees,
+      cash_total: cashTotal,
+      visa_total: visaTotal,
+      wallet_total: walletTotal,
+      credit_total: creditTotal,
+      external_trips_count: externalTrips.length,
+      external_trips_cost: externalTripsCost,
+      notes: notes || '',
+      closed_by: DEFAULT_USER.name,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error } = await supabase
+      .from('delivery_daily_closings')
+      .upsert([payload], { onConflict: 'report_date' })
+
+    setSaving(false)
+
+    if (error) {
+      toast.error('حصل خطأ أثناء حفظ التقفيل: ' + error.message)
+      return
+    }
+
+    toast.success(existingClose ? 'تم تحديث التقفيل اليومي ✅' : 'تم حفظ التقفيل اليومي ✅')
+    refetch()
+  }
+
+  const exportDailyClose = () => {
+    exportCSV(
+      [
+        ['التاريخ', selectedDate],
+        ['إجمالي الطلبات', dayOrders.length],
+        ['تم التسليم', delivered.length],
+        ['فشل التسليم', failed.length],
+        ['مرتجع', returned.length],
+        ['ملغي', cancelled.length],
+        ['طلبات نشطة', active.length],
+        ['طلبات العملاء', customerOrders.length],
+        ['طلبات الدليفري', deliveryOrders.length],
+        ['إجمالي الإيراد', revenue],
+        ['رسوم التوصيل', deliveryFees],
+        ['كاش', cashTotal],
+        ['فيزا', visaTotal],
+        ['محفظة', walletTotal],
+        ['أجل', creditTotal],
+        ['مشاوير خارجية', externalTrips.length],
+        ['تكلفة المشاوير الخارجية', externalTripsCost],
+        ['ملاحظات', notes || ''],
+      ],
+      ['البند','القيمة'],
+      `daily_close_${selectedDate}.csv`
+    )
+    toast.success('تم تصدير التقفيل اليومي')
+  }
+
+  const history = [...(data.dailyClosings || [])].sort((a,b) =>
+    (b.report_date || '').localeCompare(a.report_date || '')
+  )
+
+  return (
+    <div className="page-enter">
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="📦 إجمالي الطلبات" value={dayOrders.length} color="#3b5bfe"/>
+        <Kpi label="✅ تم التسليم" value={delivered.length} color="#10b981"/>
+        <Kpi label="💰 الإيراد" value={fmt(revenue)} color="#ca8a04" sub="جنيه"/>
+        <Kpi label="🚚 رسوم التوصيل" value={fmt(deliveryFees)} color="#a855f7" sub="جنيه"/>
+        <Kpi label="👤 طلبات عملاء" value={customerOrders.length} color="#06b6d4"/>
+        <Kpi label="🚚 طلبات دليفري" value={deliveryOrders.length} color="#a855f7"/>
+        <Kpi label="🚗 مشاوير خارجية" value={externalTrips.length} color="#f97316"/>
+        <Kpi label="❌ غير مكتمل" value={failed.length + returned.length + cancelled.length} color="#ef4444"/>
+      </div>
+
+      <Card neon>
+        <SectionTitle>🧾 التقفيل اليومي</SectionTitle>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, marginBottom:12 }}>
+          <Fld label="اختر اليوم">
+            <Inp type="date" value={selectedDate} onChange={setSelectedDate}/>
+          </Fld>
+
+          <Fld label="حالة اليوم">
+            <div
+              style={{
+                background: existingClose ? 'rgba(16,185,129,.12)' : 'rgba(245,158,11,.12)',
+                border: `1px solid ${existingClose ? 'rgba(16,185,129,.3)' : 'rgba(245,158,11,.3)'}`,
+                borderRadius:10,
+                padding:'10px 14px',
+                color: existingClose ? '#6ee7b7' : '#fcd34d',
+                fontSize:13,
+                fontWeight:800
+              }}
+            >
+              {existingClose ? '✅ اليوم ده متقفّل ومحفوظ' : '🟡 اليوم ده لسه غير محفوظ'}
+            </div>
+          </Fld>
+        </div>
+
+        <Fld label="ملاحظات التقفيل">
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="اكتب أي ملاحظات تخص اليوم..."
+            style={{
+              width:'100%',
+              minHeight:70,
+              padding:'10px 12px',
+              background:'rgba(255,255,255,.06)',
+              border:'1px solid rgba(255,255,255,.1)',
+              borderRadius:10,
+              color:'white',
+              fontSize:13,
+              fontFamily:'inherit',
+              direction:'rtl',
+              resize:'vertical'
+            }}
+          />
+        </Fld>
+
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <Btn onClick={saveClosing} color="#10b981" loading={saving}>💾 حفظ التقفيل اليومي</Btn>
+          <Btn onClick={exportDailyClose} color="#3b5bfe">📥 تصدير تقرير اليوم</Btn>
+        </div>
+      </Card>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:14, marginBottom:14 }}>
+        <Card>
+          <SectionTitle>💳 التحصيل حسب طريقة الدفع</SectionTitle>
+          {[
+            ['كاش', cashTotal, '#10b981'],
+            ['فيزا', visaTotal, '#3b82f6'],
+            ['محفظة', walletTotal, '#a855f7'],
+            ['أجل', creditTotal, '#f59e0b'],
+          ].map(([label, value, color]) => (
+            <div key={label} style={{ marginBottom:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ fontSize:12, color:'rgba(255,255,255,.5)' }}>{label}</span>
+                <span style={{ fontSize:13, fontWeight:800, color, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {fmt(value)} ج
+                </span>
+              </div>
+              <BarMini val={value} max={Math.max(revenue, 1)} color={color}/>
+            </div>
+          ))}
+        </Card>
+
+        <Card>
+          <SectionTitle>📌 ملخص التنفيذ</SectionTitle>
+          {[
+            ['طلبات نشطة', active.length, '#3b5bfe'],
+            ['فشل التسليم', failed.length, '#ef4444'],
+            ['مرتجع', returned.length, '#f59e0b'],
+            ['ملغي', cancelled.length, '#6b7280'],
+            ['مشاوير خارجية', externalTrips.length, '#f97316'],
+            ['تكلفة خارجية', `${fmt(externalTripsCost)} ج`, '#fcd34d'],
+          ].map(([label, value, color]) => (
+            <div
+              key={label}
+              style={{
+                display:'flex',
+                justifyContent:'space-between',
+                alignItems:'center',
+                padding:'8px 0',
+                borderBottom:'1px solid rgba(255,255,255,.05)'
+              }}
+            >
+              <span style={{ fontSize:12, color:'rgba(255,255,255,.5)' }}>{label}</span>
+              <span style={{ fontSize:13, fontWeight:800, color }}>{value}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      <Card>
+        <SectionTitle>🗂 أرشيف التقفيل اليومي</SectionTitle>
+        <Tbl
+          cols={['التاريخ','إجمالي الطلبات','تم التسليم','الإيراد','رسوم التوصيل','طلبات عملاء','طلبات دليفري','خارجي','ملاحظات']}
+          rows={history.map(row => (
+            <Tr key={row.id || row.report_date}>
+              <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>
+                {row.report_date}
+              </Td>
+              <Td style={{ color:'white', fontFamily:"'JetBrains Mono',monospace" }}>{row.total_orders || 0}</Td>
+              <Td style={{ color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{row.delivered_orders || 0}</Td>
+              <Td style={{ color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.revenue || 0)} ج</Td>
+              <Td style={{ color:'#a855f7', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.delivery_fees || 0)} ج</Td>
+              <Td style={{ color:'#67e8f9', fontFamily:"'JetBrains Mono',monospace" }}>{row.customer_orders || 0}</Td>
+              <Td style={{ color:'#d8b4fe', fontFamily:"'JetBrains Mono',monospace" }}>{row.delivery_orders || 0}</Td>
+              <Td style={{ color:'#f97316', fontFamily:"'JetBrains Mono',monospace" }}>{row.external_trips_count || 0}</Td>
+              <Td style={{ color:'rgba(255,255,255,.45)', fontSize:12 }}>{row.notes || '—'}</Td>
+            </Tr>
+          ))}
+        />
+      </Card>
+    </div>
+  )
+}
 
 // ══════════════════════════════════════════════════════
 //  MAIN APP
@@ -3233,6 +3511,7 @@ export default function DeliverySystem() {
       case 'vehicles':  return <Vehicles      {...props}/>
       case 'trips':     return <Trips         {...props}/>
       case 'pricing':   return <Pricing       {...props}/>
+      case 'daily_close': return <DailyClosing  data={data} refetch={refetch}/>
       case 'report':    return <Report        data={data}/>
       case 'notifs':    return <Notifs        data={data}/>
       case 'settings':  return <Settings      data={data} refetch={refetch}/>
