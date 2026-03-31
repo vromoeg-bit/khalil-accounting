@@ -207,6 +207,250 @@ const exportCSV = (rows, cols, filename) => {
 }
 
 // ══════════════════════════════════════════════════════
+//  SMART SEARCH UTILITIES
+// ══════════════════════════════════════════════════════
+const normalizeArabic = (v = '') =>
+  String(v)
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[ؤئ]/g, 'ء')
+    .replace(/[ً-ْ]/g, '')
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[^\u0600-\u06FFa-z0-9\s#@._-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const tokenizeSearch = (v = '') => normalizeArabic(v).split(' ').filter(Boolean)
+
+const fuzzyIncludes = (query, target) => {
+  if (!query || !target) return false
+  let qi = 0
+  for (let i = 0; i < target.length && qi < query.length; i++) {
+    if (target[i] === query[qi]) qi++
+  }
+  return qi === query.length
+}
+
+const smartScore = (query, target) => {
+  const q = normalizeArabic(query)
+  const t = normalizeArabic(target)
+
+  if (!q || !t) return 0
+  if (t === q) return 1000
+  if (t.startsWith(q)) return 700
+  if (t.includes(q)) return 500
+
+  const qWords = tokenizeSearch(q)
+  let score = 0
+
+  qWords.forEach(w => {
+    if (!w) return
+    if (t === w) score += 400
+    else if (t.startsWith(w)) score += 220
+    else if (t.includes(w)) score += 120
+    else if (w.length >= 3 && fuzzyIncludes(w, t)) score += 60
+  })
+
+  if (!score && q.length >= 3 && fuzzyIncludes(q, t)) score += 80
+  return score
+}
+
+const weightedSearchScore = (query, fields = []) =>
+  fields.reduce((total, field) => {
+    const text = typeof field === 'string' ? field : field.value
+    const weight = typeof field === 'string' ? 1 : (field.weight || 1)
+    return total + smartScore(query, text) * weight
+  }, 0)
+
+const buildSmartSearchResults = (data, query) => {
+  const q = String(query || '').trim()
+  if (!q) return []
+
+  const results = []
+
+  ;(data.orders || []).forEach(o => {
+    const productsText = parseProducts(o.products).map(p => p.name).join(' ')
+    const score = weightedSearchScore(q, [
+      { value: o.customer, weight: 7 },
+      { value: String(o.id), weight: 8 },
+      { value: o.phone, weight: 6 },
+      { value: o.address, weight: 5 },
+      { value: o.zone, weight: 5 },
+      { value: o.status, weight: 4 },
+      { value: o.payment_method, weight: 3 },
+      { value: o.customer_type, weight: 4 },
+      { value: o.notes, weight: 2 },
+      { value: productsText, weight: 6 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `order-${o.id}`,
+        type: 'orders',
+        typeLabel: 'طلب',
+        page: 'orders',
+        icon: '📦',
+        title: `#${o.id} — ${o.customer}`,
+        subtitle: `${o.zone || '—'} • ${o.status || '—'} • ${o.phone || 'بدون رقم'}`,
+        meta: `${fmt(o.value)} ج • ${o.customer_type || 'عميل'}`,
+        score,
+      })
+    }
+  })
+
+  ;(data.drivers || []).forEach(d => {
+    const score = weightedSearchScore(q, [
+      { value: d.name, weight: 8 },
+      { value: d.phone, weight: 6 },
+      { value: d.zone, weight: 5 },
+      { value: d.status, weight: 4 },
+      { value: d.notes, weight: 2 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `driver-${d.id}`,
+        type: 'drivers',
+        typeLabel: 'مندوب',
+        page: 'drivers',
+        icon: '🏍',
+        title: d.name,
+        subtitle: `${d.zone || '—'} • ${d.status || '—'} • ${d.phone || 'بدون رقم'}`,
+        meta: `تقييم ${d.rating || 0} • ${d.delivered || 0} تسليم`,
+        score,
+      })
+    }
+  })
+
+  ;(data.zones || []).forEach(z => {
+    const p = z.pricing || {}
+    const score = weightedSearchScore(q, [
+      { value: z.name, weight: 8 },
+      { value: z.load, weight: 5 },
+      { value: String(p.basePrice || ''), weight: 3 },
+      { value: String(p.slaMinutes || ''), weight: 3 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `zone-${z.id}`,
+        type: 'zones',
+        typeLabel: 'منطقة',
+        page: 'zones',
+        icon: '🗺',
+        title: z.name,
+        subtitle: `${z.load || '—'} • SLA ${p.slaMinutes || 0} دقيقة`,
+        meta: `رسوم ${fmt(p.basePrice || 0)} ج`,
+        score,
+      })
+    }
+  })
+
+  ;(data.vehicles || []).forEach(v => {
+    const score = weightedSearchScore(q, [
+      { value: v.name, weight: 8 },
+      { value: String(v.max_orders || ''), weight: 3 },
+      { value: String(v.cost_per_km || ''), weight: 3 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `vehicle-${v.id}`,
+        type: 'vehicles',
+        typeLabel: 'مركبة',
+        page: 'vehicles',
+        icon: v.icon || '🚗',
+        title: v.name,
+        subtitle: `تكلفة ${fmt(v.cost_per_km || 0)} ج/كم`,
+        meta: `أقصى طلبات ${v.max_orders || 0}`,
+        score,
+      })
+    }
+  })
+
+  ;(data.trips || []).forEach(t => {
+    const drv = (data.drivers || []).find(d => d.id === t.driver_id)
+    const zone = (data.zones || []).find(z => z.id === t.zone_id)
+
+    const score = weightedSearchScore(q, [
+      { value: String(t.id), weight: 8 },
+      { value: t.wave, weight: 5 },
+      { value: t.status, weight: 5 },
+      { value: t.external_notes, weight: 4 },
+      { value: drv?.name, weight: 6 },
+      { value: zone?.name, weight: 6 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `trip-${t.id}`,
+        type: 'trips',
+        typeLabel: 'رحلة',
+        page: 'trips',
+        icon: t.is_external ? '🚗' : '🕐',
+        title: `#${t.id} — ${drv?.name || 'بدون مندوب'}`,
+        subtitle: `${zone?.name || '—'} • ${t.wave || '—'} • ${t.status || '—'}`,
+        meta: t.is_external
+          ? `خارجي • ${fmt(t.external_cost || 0)} ج`
+          : `${t.distance || 0} كم • ${t.time_mins || 0} د`,
+        score,
+      })
+    }
+  })
+
+  ;(data.users || []).forEach(u => {
+    const roleLabel = ROLES[u.role]?.label || u.role
+    const score = weightedSearchScore(q, [
+      { value: u.name, weight: 8 },
+      { value: u.username, weight: 7 },
+      { value: u.role, weight: 4 },
+      { value: roleLabel, weight: 4 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `user-${u.id}`,
+        type: 'users',
+        typeLabel: 'مستخدم',
+        page: 'users',
+        icon: '👥',
+        title: u.name,
+        subtitle: `${u.username} • ${roleLabel}`,
+        meta: u.active ? 'نشط' : 'موقوف',
+        score,
+      })
+    }
+  })
+
+  ;(data.dailyClosings || []).forEach(r => {
+    const score = weightedSearchScore(q, [
+      { value: r.report_date, weight: 8 },
+      { value: r.notes, weight: 4 },
+      { value: String(r.total_orders || ''), weight: 2 },
+      { value: String(r.revenue || ''), weight: 2 },
+    ])
+
+    if (score > 0) {
+      results.push({
+        id: `close-${r.id || r.report_date}`,
+        type: 'daily_close',
+        typeLabel: 'تقفيل يومي',
+        page: 'daily_close',
+        icon: '🧾',
+        title: r.report_date,
+        subtitle: `${r.total_orders || 0} طلب • ${r.delivered_orders || 0} تم التسليم`,
+        meta: `${fmt(r.revenue || 0)} ج`,
+        score,
+      })
+    }
+  })
+
+  return results.sort((a, b) => b.score - a.score).slice(0, 60)
+}
+
+// ══════════════════════════════════════════════════════
 //  TOAST SYSTEM
 // ══════════════════════════════════════════════════════
 const ToastContext = { _add: null }
@@ -1047,13 +1291,38 @@ function Orders({ data, refetch, user }) {
   const today = new Date().toISOString().slice(0,10)
   const { orders, zones, drivers } = data
 
-  const list = useMemo(() => orders.filter(o =>
-  (!fSt   || o.status === fSt) &&
-  (!fZ    || o.zone === fZ) &&
-  (!fPay  || o.payment_method === fPay) &&
-  (!fType || o.customer_type === fType) &&
-  (!srch  || o.customer?.toLowerCase().includes(srch.toLowerCase()) || String(o.id).includes(srch) || o.phone?.includes(srch))
-), [orders, fSt, fZ, fPay, fType, srch])
+  const list = useMemo(() => {
+  const base = orders.filter(o =>
+    (!fSt   || o.status === fSt) &&
+    (!fZ    || o.zone === fZ) &&
+    (!fPay  || o.payment_method === fPay) &&
+    (!fType || o.customer_type === fType)
+  )
+
+  if (!srch.trim()) return base
+
+  return base
+    .map(o => {
+      const productsText = parseProducts(o.products).map(p => p.name).join(' ')
+      const score = weightedSearchScore(srch, [
+        { value: o.customer, weight: 7 },
+        { value: String(o.id), weight: 8 },
+        { value: o.phone, weight: 6 },
+        { value: o.address, weight: 5 },
+        { value: o.zone, weight: 5 },
+        { value: o.status, weight: 4 },
+        { value: o.payment_method, weight: 3 },
+        { value: o.customer_type, weight: 4 },
+        { value: o.notes, weight: 2 },
+        { value: productsText, weight: 6 },
+      ])
+
+      return { o, score }
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.o)
+}, [orders, fSt, fZ, fPay, fType, srch])
 
   const allSelected = selected.length === list.length && list.length > 0
   const toggleAll   = () => setSel(allSelected ? [] : list.map(o => o.id))
@@ -1135,8 +1404,7 @@ function Orders({ data, refetch, user }) {
         {can(user,'orders_w') && <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ طلب جديد</Btn>}
         <Btn onClick={exportOrders} color="#10b981" small title="تصدير CSV">📥 CSV</Btn>
         {selected.length > 0 && <Btn onClick={() => setShowBulk(true)} color="#a855f7" small>⚡ {selected.length} محدد</Btn>}
-        <Inp value={srch} onChange={setSrch} placeholder="🔍 بحث..." style={{ width:160, padding:'6px 11px', fontSize:12 }}/>
-        <select value={fSt} onChange={e=>setFSt(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
+        <Inp value={srch} onChange={setSrch} placeholder="🔍 بحث ذكي: عميل / رقم / تليفون / منطقة / صنف..." style={{ width:280, padding:'6px 11px', fontSize:12 }}/>        <select value={fSt} onChange={e=>setFSt(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
           <option value=''>كل الحالات</option>{ALL_STATUS.map(s=><option key={s}>{s}</option>)}
         </select>
         <select value={fZ} onChange={e=>setFZ(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
@@ -2802,7 +3070,7 @@ function ShortcutsModal({ onClose }) {
   return (
     <Modal title="⌨️ اختصارات لوحة المفاتيح" onClose={onClose}>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:10 }}>
-        {[['Alt+H','الرئيسية'],['Alt+O','الطلبات'],['Alt+D','المندوبين'],['Alt+Z','المناطق'],['Alt+A','التحليلات'],['Alt+N','الإشعارات'],['Alt+R','التقارير'],['Alt+S','الإعدادات'],['Alt+?','هذه القائمة'],['F5','تحديث البيانات']].map(([k,v])=>(
+        {[['Alt+H','الرئيسية'],['Alt+O','الطلبات'],['Alt+D','المندوبين'],['Alt+Z','المناطق'],['Alt+A','التحليلات'],['Alt+N','الإشعارات'],['Alt+R','التقارير'],['Alt+S','الإعدادات'],['Ctrl+K','البحث الذكي'],['Alt+?','هذه القائمة'],['F5','تحديث البيانات']].map(([k,v])=>(
           <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'rgba(255,255,255,.04)', borderRadius:8 }}>
             <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", background:'rgba(255,255,255,.1)', padding:'2px 8px', borderRadius:6, color:'white' }}>{k}</span>
             <span style={{ fontSize:12, color:'rgba(255,255,255,.6)' }}>{v}</span>
@@ -3631,6 +3899,152 @@ function DailyClosing({ data, refetch }) {
 }
 
 // ══════════════════════════════════════════════════════
+//  SMART SEARCH MODAL
+// ══════════════════════════════════════════════════════
+function SmartSearchModal({ data, onClose, setPage }) {
+  const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef(null)
+
+  const results = useMemo(() => buildSmartSearchResults(data, query), [data, query])
+
+  const openResult = useCallback((item) => {
+    setPage(item.page)
+    onClose()
+    setTimeout(() => {
+      toast.info(`تم فتح ${item.typeLabel}: ${item.title}`)
+    }, 80)
+  }, [onClose, setPage])
+
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [query])
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 80)
+    return () => clearTimeout(t)
+  }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.min(i + 1, Math.max(results.length - 1, 0)))
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.max(i - 1, 0))
+      }
+
+      if (e.key === 'Enter' && results[selectedIndex]) {
+        e.preventDefault()
+        openResult(results[selectedIndex])
+      }
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [results, selectedIndex, openResult])
+
+  return (
+    <Modal
+      title="🔎 البحث الذكي الشامل"
+      onClose={onClose}
+      wide
+      footer={
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'rgba(255,255,255,.35)' }}>
+            الطلبات • المندوبين • المناطق • المركبات • الرحلات • المستخدمين • التقفيل اليومي
+          </span>
+          <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontFamily:"'JetBrains Mono',monospace" }}>
+            Ctrl + K • ↑ ↓ • Enter • Esc
+          </span>
+        </div>
+      }
+    >
+      <div style={{ marginBottom:14 }}>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="اكتب أي حاجة: اسم عميل، رقم طلب، رقم موبايل، منطقة، مندوب، رحلة..."
+          style={{
+            width:'100%',
+            padding:'12px 14px',
+            background:'rgba(255,255,255,.06)',
+            border:'1px solid rgba(59,91,254,.35)',
+            borderRadius:12,
+            color:'white',
+            fontSize:14,
+            fontFamily:'inherit',
+            direction:'rtl',
+            outline:'none'
+          }}
+        />
+      </div>
+
+      {!query.trim() && (
+        <div style={{ textAlign:'center', padding:'30px 10px', color:'rgba(255,255,255,.3)', fontSize:13 }}>
+          اكتب كلمة البحث وهتظهر النتائج فوراً
+        </div>
+      )}
+
+      {query.trim() && results.length === 0 && (
+        <div style={{ textAlign:'center', padding:'30px 10px', color:'rgba(255,255,255,.3)', fontSize:13 }}>
+          مفيش نتائج مطابقة
+        </div>
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {results.map((item, index) => (
+          <button
+            key={item.id}
+            onClick={() => openResult(item)}
+            style={{
+              width:'100%',
+              textAlign:'right',
+              background: selectedIndex === index ? 'rgba(59,91,254,.15)' : 'rgba(255,255,255,.03)',
+              border: `1px solid ${selectedIndex === index ? 'rgba(59,91,254,.35)' : 'rgba(255,255,255,.07)'}`,
+              borderRadius:12,
+              padding:'12px 14px',
+              cursor:'pointer',
+              color:'white',
+              fontFamily:'inherit',
+              transition:'all .15s'
+            }}
+          >
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:20, flexShrink:0 }}>{item.icon}</span>
+
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', gap:10, alignItems:'center' }}>
+                  <span style={{ fontSize:13, fontWeight:800, color:'white', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {item.title}
+                  </span>
+
+                  <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:8, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.6)', flexShrink:0 }}>
+                    {item.typeLabel}
+                  </span>
+                </div>
+
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:4 }}>
+                  {item.subtitle}
+                </div>
+
+                <div style={{ fontSize:11, color:'#7b9fff', marginTop:4, fontWeight:700 }}>
+                  {item.meta}
+                </div>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 //  MAIN APP
 // ══════════════════════════════════════════════════════
 export default function DeliverySystem() {
@@ -3639,23 +4053,40 @@ export default function DeliverySystem() {
   const [time, setTime]   = useState(new Date())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [shortcuts, setShortcuts] = useState(false)
+  const [smartSearchOpen, setSmartSearchOpen] = useState(false)
+
 
   useEffect(() => { injectStyles() }, [])
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 15000); return () => clearInterval(t) }, [])
 
   // Keyboard shortcuts
   useEffect(() => {
-    const handler = (e) => {
-      if (e.altKey) {
-        const map = { h:'home', o:'orders', d:'drivers', z:'zones', a:'analytics', n:'notifs', r:'report', s:'settings' }
-        if (map[e.key]) { e.preventDefault(); setPage(map[e.key]) }
-        if (e.key === '?') setShortcuts(true)
-      }
-      if (e.key === 'F5') { e.preventDefault(); refetch(); toast.info('جاري التحديث...') }
+  const handler = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault()
+      setSmartSearchOpen(true)
+      return
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [refetch])
+
+    if (e.altKey) {
+      const map = { h:'home', o:'orders', d:'drivers', z:'zones', a:'analytics', n:'notifs', r:'report', s:'settings' }
+      if (map[e.key]) {
+        e.preventDefault()
+        setPage(map[e.key])
+      }
+      if (e.key === '?') setShortcuts(true)
+    }
+
+    if (e.key === 'F5') {
+      e.preventDefault()
+      refetch()
+      toast.info('جاري التحديث...')
+    }
+  }
+
+  window.addEventListener('keydown', handler)
+  return () => window.removeEventListener('keydown', handler)
+}, [refetch])
 
   if (loading) return <ToastProvider><LoadingScreen/></ToastProvider>
 
@@ -3697,7 +4128,14 @@ export default function DeliverySystem() {
 
   return (
     <ToastProvider>
-      {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)}/>}
+  {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)}/>}
+  {smartSearchOpen && (
+    <SmartSearchModal
+      data={data}
+      setPage={setPage}
+      onClose={() => setSmartSearchOpen(false)}
+    />
+  )}
       <div style={{ display:'flex', height:'100vh', overflow:'hidden', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif", background:'#0a0a0f' }}>
 
         {/* ── SIDEBAR ── */}
@@ -3786,12 +4224,43 @@ export default function DeliverySystem() {
                 </span>
               )}
             </div>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ fontSize:15, fontWeight:800, color:'white' }}>
-                {allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}
-              </span>
-              <RefreshBar lastUpdate={lastUpdate} onRefresh={refetch}/>
-            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+  <button
+    onClick={() => setSmartSearchOpen(true)}
+    style={{
+      display:'inline-flex',
+      alignItems:'center',
+      gap:8,
+      padding:'7px 12px',
+      borderRadius:10,
+      border:'1px solid rgba(59,91,254,.25)',
+      background:'rgba(59,91,254,.12)',
+      color:'white',
+      cursor:'pointer',
+      fontFamily:'inherit',
+      fontSize:12,
+      fontWeight:700
+    }}
+  >
+    <span>🔎 البحث الذكي</span>
+    <span style={{
+      fontSize:10,
+      fontFamily:"'JetBrains Mono',monospace",
+      color:'rgba(255,255,255,.5)',
+      background:'rgba(255,255,255,.08)',
+      padding:'2px 6px',
+      borderRadius:6
+    }}>
+      Ctrl + K
+    </span>
+  </button>
+
+  <span style={{ fontSize:15, fontWeight:800, color:'white' }}>
+    {allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}
+  </span>
+
+  <RefreshBar lastUpdate={lastUpdate} onRefresh={refetch}/>
+</div>
           </div>
 
           {/* PAGE CONTENT */}
