@@ -193,6 +193,7 @@ const parseProducts = (p) => {
 }
 
 const findOrCreateCustomer = async (form) => {
+  const findOrCreateCustomer = async (form) => {
   const cleanName = String(form.customer || '').trim()
   const cleanPhone = String(form.phone || '').trim()
   const cleanAddress = String(form.address || '').trim()
@@ -205,9 +206,8 @@ const findOrCreateCustomer = async (form) => {
   if (cleanPhone) {
     const byPhone = await supabase
       .from('delivery_customers')
-      .select('*')
+      .select('id,name,phone')
       .eq('phone', cleanPhone)
-      .order('id', { ascending: true })
       .limit(1)
       .maybeSingle()
 
@@ -218,9 +218,8 @@ const findOrCreateCustomer = async (form) => {
   if (!existing) {
     const byName = await supabase
       .from('delivery_customers')
-      .select('*')
+      .select('id,name,phone')
       .eq('name', cleanName)
-      .order('id', { ascending: true })
       .limit(1)
       .maybeSingle()
 
@@ -229,18 +228,6 @@ const findOrCreateCustomer = async (form) => {
   }
 
   if (existing) {
-    const upd = await supabase
-      .from('delivery_customers')
-      .update({
-        name: cleanName,
-        phone: cleanPhone || null,
-        address: cleanAddress,
-        customer_type: customerType,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existing.id)
-
-    if (upd.error) return { customerId: null, error: upd.error.message }
     return { customerId: existing.id, error: null }
   }
 
@@ -249,18 +236,17 @@ const findOrCreateCustomer = async (form) => {
     .insert([{
       name: cleanName,
       phone: cleanPhone || null,
-      address: cleanAddress,
+      address: cleanAddress || '',
       customer_type: customerType,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     }])
-    .select()
+    .select('id')
     .single()
 
   if (ins.error) return { customerId: null, error: ins.error.message }
 
   return { customerId: ins.data.id, error: null }
 }
+
 
 const exportCSV = (rows, cols, filename) => {
   const header = cols.join(',')
@@ -1764,28 +1750,31 @@ setSaving(true); sE('')
     return
   }
 
-  const payload = {
+ const payload = {
     customer_id: customerRes.customerId,
     customer: f.customer.trim(),
-    phone: f.phone || '',
-    address: f.address || '',
-    zone: f.zone,
+    phone: f.phone?.trim() || null,
+    address: f.address?.trim() || '',
+    zone: f.zone || null,
     value: toNum(f.value),
     driver_id: f.driver_id ? parseInt(f.driver_id) : null,
-    delivery_fee: fee,
-    products: JSON.stringify(f.products),
-    status: f.status,
+    delivery_fee: f.no_fee ? 0 : fee,
+    products: JSON.stringify(Array.isArray(f.products) ? f.products : []),
+    status: f.status || 'استُلم الطلب',
     notes: f.notes || '',
     customer_type: f.customer_type || 'عميل',
     payment_method: f.payment_method || 'كاش',
-    due_date: f.due_date || null,
-    no_fee: f.no_fee || false,
-    fail_reason: f.fail_reason || '',
-    cancel_reason: f.cancel_reason || '',
-    return_reason: f.return_reason || '',
+    due_date: f.payment_method === 'أجل' ? (f.due_date || null) : null,
+    no_fee: !!f.no_fee,
+    fail_reason: f.status === 'فشل التسليم' ? (f.fail_reason || '') : null,
+    cancel_reason: f.status === 'ملغي' ? (f.cancel_reason || '') : null,
+    return_reason: f.status === 'مرتجع' ? (f.return_reason || '') : null,
     collection_amount: collectionAmount,
     collection_date: collectionAmount > 0 ? (f.collection_date || today) : null,
-    collection_shift_type: collectionAmount > 0 ? (f.collection_shift_type || null) : null,
+    collection_shift_type:
+      collectionAmount > 0 && f.payment_method === 'كاش'
+        ? (f.collection_shift_type || null)
+        : null,
   }
 
   let result
@@ -1834,8 +1823,17 @@ setSaving(true); sE('')
   <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
   <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
   <Fld label="العنوان"><Inp value={f.address} onChange={set('address')} prefix="📍"/></Fld>
-  <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
-  <Fld label="قيمة الأوردر (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
+  <Fld label="المنطقة" required>
+  <Sel
+    value={f.zone}
+    onChange={set('zone')}
+    options={[
+      { v:'', l:'اختر المنطقة' },
+      ...data.zones.map(z => ({ v:z.name, l:z.name }))
+    ]}
+  />
+</Fld> 
+ <Fld label="قيمة الأوردر (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
   <Fld label="نوع العميل"><Sel value={f.customer_type} onChange={set('customer_type')} options={[{v:'عميل',l:'👤 عميل'},{v:'دليفري',l:'🚚 دليفري'}]}/></Fld>
   <Fld label="طريقة الدفع"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
   {f.payment_method === 'أجل' && <Fld label="تاريخ الاستحقاق"><Inp type="date" value={f.due_date} onChange={set('due_date')}/></Fld>}
@@ -2321,8 +2319,17 @@ function DriverForm({ data, driver, onClose, refetch }) {
         <Fld label="الاسم" required><Inp value={f.name} onChange={set('name')} prefix="👤"/></Fld>
         <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
         <Fld label="المركبة"><Sel value={f.vehicle_id||''} onChange={set('vehicle_id')} options={data.vehicles.map(v=>({v:v.id,l:`${v.icon} ${v.name}`}))}/></Fld>
-        <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
-        <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={['شغال','استراحة','غير متاح'].map(v=>({v,l:v}))}/></Fld>
+        <Fld label="المنطقة" required>
+  <Sel
+    value={f.zone}
+    onChange={set('zone')}
+    options={[
+      { v:'', l:'اختر المنطقة' },
+      ...data.zones.map(z => ({ v:z.name, l:z.name }))
+    ]}
+  />
+</Fld>    
+    <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={['شغال','استراحة','غير متاح'].map(v=>({v,l:v}))}/></Fld>
         <Fld label="التقييم (1-5)"><Inp type="number" value={f.rating} onChange={set('rating')}/></Fld>
       </div>
       <Fld label="ملاحظات"><textarea value={f.notes||''} onChange={e=>set('notes')(e.target.value)} style={{ width:'100%', minHeight:55, padding:'9px 13px', background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', borderRadius:9, color:'white', fontSize:13, fontFamily:'inherit', direction:'rtl', resize:'vertical' }}/></Fld>
