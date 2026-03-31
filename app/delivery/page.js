@@ -1678,6 +1678,20 @@ const def = {
   collection_date:today,
   collection_shift_type:'',
 }
+const [customerSearch, setCustomerSearch] = useState(
+  order ? `${order.customer || ''}${order.phone ? ` — ${order.phone}` : ''}` : ''
+)
+const [showCustomerResults, setShowCustomerResults] = useState(false)
+
+const filteredCustomers = useMemo(() => {
+  const search = customerSearch.trim().toLowerCase()
+  if (!search) return data.customers || []
+
+  return (data.customers || []).filter(c =>
+    (c.name || '').toLowerCase().includes(search) ||
+    (c.phone || '').toLowerCase().includes(search)
+  )
+}, [customerSearch, data.customers])
   const [f, sF] = useState({
   ...def,
   ...(order || {}),
@@ -1699,14 +1713,9 @@ const balanceAfterPreview = previousBalancePreview + toNum(f.value) - collection
 
 const applyCustomer = (id) => {
   if (!id) {
-    setCustomerSearch('')
     sF(p => ({
       ...p,
-      customer_id:'',
-      customer:'',
-      phone:'',
-      address:'',
-      customer_type:'عميل',
+      customer_id: '',
     }))
     return
   }
@@ -1718,12 +1727,14 @@ const applyCustomer = (id) => {
 
   sF(p => ({
     ...p,
-    customer_id: id,
+    customer_id: c.id,
     customer: c.name || '',
     phone: c.phone || '',
     address: c.address || '',
     customer_type: c.customer_type || 'عميل',
   }))
+
+  setShowCustomerResults(false)
 }
 
   const save = async () => {
@@ -2513,36 +2524,9 @@ function ZoneModal({ zone, onClose, refetch }) {
   const p0 = zone?.pricing || {}
   const [f, sF] = useState({ name:'', load:'عادي', max_capacity:40, avg_time:25, color:'#3b5bfe', basePrice:10, discount:0, freeDeliveryFrom:150, minOrder:30, slaMinutes:40, ...zone, ...p0 })
   const [err, sE] = useState('')
-const [saving, setSaving] = useState(false)
-const [customerSearch, setCustomerSearch] = useState(() => {
-  const c = data.customers.find(x => x.id === parseInt(order?.customer_id))
-  if (c) return `${c.name}${c.phone ? ` — ${c.phone}` : ''}`
-  return ''
-})
-const [showCustomerResults, setShowCustomerResults] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-const filteredCustomers = useMemo(() => {
-  const q = customerSearch.trim()
-
-  if (!q) return (data.customers || []).slice(0, 12)
-
-  return (data.customers || [])
-    .map(c => ({
-      c,
-      score: weightedSearchScore(q, [
-        { value: c.name, weight: 8 },
-        { value: c.phone, weight: 6 },
-        { value: c.address, weight: 4 },
-        { value: c.customer_type, weight: 3 },
-      ])
-    }))
-    .filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 12)
-    .map(x => x.c)
-}, [customerSearch, data.customers])
-
-const set = k => v => sF(p => ({ ...p, [k]:v }))
+  const set = k => v => sF(p => ({ ...p, [k]:v }))
   const COLS = ['#ef4444','#f59e0b','#10b981','#3b5bfe','#a855f7','#06b6d4','#f97316','#6366f1','#ec4899','#14b8a6']
   const save = async () => {
     if (!f.name?.trim()) { sE('يجب ملء اسم المنطقة'); return }
