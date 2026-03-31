@@ -111,6 +111,7 @@ const PERMS = {
 const NAV = [
   { id:'home',      label:'الرئيسية',    icon:'🏠', group:'main' },
   { id:'orders',    label:'الطلبات',     icon:'📦', group:'main' },
+  { id:'customers', label:'العملاء',     icon:'👥', group:'main' },
   { id:'analytics', label:'التحليلات',   icon:'📈', group:'main' },
   { id:'prep',      label:'التحضير',     icon:'🍳', group:'ops' },
   { id:'tracking',  label:'تتبع الدليفري',icon:'📍', group:'ops' },
@@ -119,7 +120,8 @@ const NAV = [
   { id:'vehicles',  label:'المركبات',    icon:'🚗', group:'ops' },
   { id:'trips',     label:'الرحلات',     icon:'🕐', group:'ops' },
   { id:'shifts',    label:'الشفتات',     icon:'📅', group:'config' },
-  { id:'pricing',   label:'الأسعار',     icon:'💰', group:'config' },
+ { id:'pricing',   label:'الأسعار',     icon:'💰', group:'config' },
+  { id:'treasury',  label:'الخزنة',      icon:'🏦', group:'config' },
   { id:'daily_close', label:'التقفيل اليومي', icon:'🧾', group:'config' },
   { id:'report',    label:'التقارير',    icon:'📊', group:'config' },
   { id:'notifs',    label:'التنبيهات',   icon:'🔔', group:'config' },
@@ -151,8 +153,10 @@ const toDayKey = (d) => {
   return `${y}-${m}-${day}`
 }
 
+const toNum = (v) => parseFloat(v || 0) || 0
+
 const sumValues = (list, field) =>
-  list.reduce((s, item) => s + parseFloat(item?.[field] || 0), 0)
+  list.reduce((s, item) => s + toNum(item?.[field]), 0)
 
 const calcFee = (zones, zoneName, val, noFee) => {
   if (noFee) return 0
@@ -186,6 +190,76 @@ const parseProducts = (p) => {
     }
   }
   return []
+}
+
+const findOrCreateCustomer = async (form) => {
+  const cleanName = String(form.customer || '').trim()
+  const cleanPhone = String(form.phone || '').trim()
+  const cleanAddress = String(form.address || '').trim()
+  const customerType = form.customer_type || 'عميل'
+
+  if (!cleanName) return { customerId: null, error: 'اسم العميل مطلوب' }
+
+  let existing = null
+
+  if (cleanPhone) {
+    const byPhone = await supabase
+      .from('delivery_customers')
+      .select('*')
+      .eq('phone', cleanPhone)
+      .order('id', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (byPhone.error) return { customerId: null, error: byPhone.error.message }
+    existing = byPhone.data
+  }
+
+  if (!existing) {
+    const byName = await supabase
+      .from('delivery_customers')
+      .select('*')
+      .eq('name', cleanName)
+      .order('id', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (byName.error) return { customerId: null, error: byName.error.message }
+    existing = byName.data
+  }
+
+  if (existing) {
+    const upd = await supabase
+      .from('delivery_customers')
+      .update({
+        name: cleanName,
+        phone: cleanPhone || null,
+        address: cleanAddress,
+        customer_type: customerType,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+
+    if (upd.error) return { customerId: null, error: upd.error.message }
+    return { customerId: existing.id, error: null }
+  }
+
+  const ins = await supabase
+    .from('delivery_customers')
+    .insert([{
+      name: cleanName,
+      phone: cleanPhone || null,
+      address: cleanAddress,
+      customer_type: customerType,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }])
+    .select()
+    .single()
+
+  if (ins.error) return { customerId: null, error: ins.error.message }
+
+  return { customerId: ins.data.id, error: null }
 }
 
 const exportCSV = (rows, cols, filename) => {
@@ -299,6 +373,30 @@ const buildSmartSearchResults = (data, query) => {
       })
     }
   })
+
+;(data.customers || []).forEach(c => {
+  const score = weightedSearchScore(q, [
+    { value: c.name, weight: 8 },
+    { value: c.phone, weight: 6 },
+    { value: c.address, weight: 4 },
+    { value: c.customer_type, weight: 4 },
+    { value: String(c.current_balance || ''), weight: 3 },
+  ])
+
+  if (score > 0) {
+    results.push({
+      id: `customer-${c.id}`,
+      type: 'customers',
+      typeLabel: 'عميل',
+      page: 'customers',
+      icon: '👥',
+      title: c.name,
+      subtitle: `${c.phone || 'بدون رقم'} • ${c.customer_type || 'عميل'}`,
+      meta: `رصيد ${fmt(c.current_balance || 0)} ج`,
+      score,
+    })
+  }
+})
 
   ;(data.drivers || []).forEach(d => {
     const score = weightedSearchScore(q, [
@@ -895,6 +993,7 @@ function Modal({ title, onClose, children, footer, wide }) {
 function useData() {
   const [data, setData] = useState({
   orders:[],
+  customers:[],
   drivers:[],
   zones:[],
   vehicles:[],
@@ -913,8 +1012,9 @@ function useData() {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
 
-    const [ord, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
+    const [ord, cus, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
   supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
+  supabase.from('delivery_customers').select('*').order('updated_at', { ascending:false }),
   supabase.from('delivery_drivers').select('*'),
   supabase.from('delivery_zones').select('*'),
   supabase.from('delivery_vehicles').select('*'),
@@ -925,9 +1025,10 @@ function useData() {
   supabase.from('delivery_daily_closings').select('*').order('report_date', { ascending:false }),
 ])
 
-    if (ord.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
+    if (ord.error || cus.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
       console.error('Supabase error:', {
   ord: ord.error,
+  cus: cus.error,
   drv: drv.error,
   zon: zon.error,
   veh: veh.error,
@@ -942,6 +1043,7 @@ function useData() {
     } else {
      setData({
   orders: ord.data || [],
+  customers: cus.data || [],
   drivers: drv.data || [],
   zones: zon.data || [],
   vehicles: veh.data || [],
@@ -1361,13 +1463,27 @@ function Orders({ data, refetch, user }) {
   }
 
   const exportOrders = () => {
-    exportCSV(
-      list.map(o => [o.id, o.customer, o.phone||'', o.zone, o.value, o.payment_method, o.status, drivers.find(d=>d.id===o.driver_id)?.name||'', fmtDate(o.created_at)]),
-      ['#','العميل','التليفون','المنطقة','القيمة','التحصيل','الحالة','المندوب','التاريخ'],
-      `orders_${today}.csv`
-    )
-    toast.success('تم تصدير الطلبات')
-  }
+  exportCSV(
+    list.map(o => [
+      o.id,
+      o.customer,
+      o.phone || '',
+      o.zone,
+      o.value,
+      o.previous_balance || 0,
+      o.collection_amount || 0,
+      o.balance_after || 0,
+      o.payment_method,
+      o.collection_shift_type || '',
+      o.status,
+      drivers.find(d=>d.id===o.driver_id)?.name || '',
+      fmtDate(o.created_at)
+    ]),
+    ['#','العميل','التليفون','المنطقة','قيمة الأوردر','الرصيد السابق','مبلغ التحصيل','الرصيد الحالي','طريقة الدفع','شفت التحصيل','الحالة','المندوب','التاريخ'],
+    `orders_${today}.csv`
+  )
+  toast.success('تم تصدير الطلبات')
+}
 
   const unassigned = orders.filter(o => !o.driver_id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
   const overdue    = orders.filter(o => o.payment_method==='أجل' && o.due_date && o.due_date < today && o.status !== 'ملغي')
@@ -1449,7 +1565,7 @@ function Orders({ data, refetch, user }) {
   <div>
     <div style={{ fontWeight:700, color:'white', fontSize:13 }}>{o.customer}</div>
     <div style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{o.phone}</div>
-    <div style={{ marginTop:4 }}>
+    <div style={{ marginTop:4, display:'flex', gap:6, flexWrap:'wrap' }}>
       <span style={{
         fontSize:10,
         fontWeight:700,
@@ -1459,6 +1575,17 @@ function Orders({ data, refetch, user }) {
         color:isDeliveryOrder(o) ? '#d8b4fe' : '#67e8f9'
       }}>
         {o.customer_type || 'عميل'}
+      </span>
+
+      <span style={{
+        fontSize:10,
+        fontWeight:700,
+        padding:'2px 8px',
+        borderRadius:7,
+        background:'rgba(245,158,11,.14)',
+        color:'#fcd34d'
+      }}>
+        رصيد: {fmt(o.balance_after || 0)} ج
       </span>
     </div>
   </div>
@@ -1509,7 +1636,19 @@ function Orders({ data, refetch, user }) {
                   <td colSpan={11} style={{ padding:'12px 16px', background:'rgba(59,91,254,.04)', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
                     <div style={{ marginBottom:10 }}><OrderTimeline order={o}/></div>
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, fontSize:12 }}>
-                      {[['العنوان',o.address||'—'],['الملاحظات',o.notes||'—'],['سبب الفشل',o.fail_reason||'—'],['سبب الإلغاء',o.cancel_reason||'—']].filter(([,v])=>v!=='—').map(([l,v])=>(
+  {[
+    ['العنوان', o.address || '—'],
+    ['الرصيد السابق', `${fmt(o.previous_balance || 0)} ج`],
+    ['قيمة الأوردر', `${fmt(o.value || 0)} ج`],
+    ['مبلغ التحصيل', `${fmt(o.collection_amount || 0)} ج`],
+    ['الرصيد بعد الحركة', `${fmt(o.balance_after || 0)} ج`],
+    ['تاريخ التحصيل', o.collection_date || '—'],
+    ['شفت التحصيل', o.collection_shift_type || '—'],
+    ['الملاحظات', o.notes || '—'],
+    ['سبب الفشل', o.fail_reason || '—'],
+    ['سبب الإلغاء', o.cancel_reason || '—'],
+    ['سبب المرتجع', o.return_reason || '—'],
+  ].filter(([,v])=>v!=='—').map(([l,v])=>(
                         <div key={l} style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
                           <div style={{ color:'rgba(255,255,255,.4)', fontSize:10, marginBottom:3 }}>{l}</div>
                           <div style={{ color:'rgba(255,255,255,.7)' }}>{v}</div>
@@ -1531,45 +1670,125 @@ function Orders({ data, refetch, user }) {
 //  ORDER MODAL
 // ══════════════════════════════════════════════════════
 function OrderModal({ data, order, onClose, refetch }) {
-  const def = { customer:'', phone:'', address:'', zone:'', value:'', products:[], status:'استُلم الطلب', driver_id:'', notes:'', customer_type:'عميل', payment_method:'كاش', due_date:'', no_fee:false, fail_reason:'', cancel_reason:'', return_reason:'' }
-  const [f, sF] = useState({ ...def, ...(order||{}), products: parseProducts(order?.products) })
+  const today = toDayKey(new Date())
+const def = {
+  customer_id:'',
+  customer:'',
+  phone:'',
+  address:'',
+  zone:'',
+  value:'',
+  products:[],
+  status:'استُلم الطلب',
+  driver_id:'',
+  notes:'',
+  customer_type:'عميل',
+  payment_method:'كاش',
+  due_date:'',
+  no_fee:false,
+  fail_reason:'',
+  cancel_reason:'',
+  return_reason:'',
+  collection_amount:'',
+  collection_date:today,
+  collection_shift_type:'',
+}
+  const [f, sF] = useState({
+  ...def,
+  ...(order || {}),
+  collection_date: order?.collection_date || today,
+  products: parseProducts(order?.products),
+})
   const [err, sE] = useState('')
   const [saving, setSaving] = useState(false)
   const set = k => v => sF(p => ({ ...p, [k]:v }))
-  const fee = calcFee(data.zones, f.zone, f.value, f.no_fee)
+const fee = calcFee(data.zones, f.zone, f.value, f.no_fee)
+
+const selectedCustomer = data.customers.find(c => c.id === parseInt(f.customer_id))
+const previousBalancePreview = order
+  ? toNum(order.previous_balance)
+  : toNum(selectedCustomer?.current_balance)
+
+const collectionAmountPreview = toNum(f.collection_amount)
+const balanceAfterPreview = previousBalancePreview + toNum(f.value) - collectionAmountPreview
+
+const applyCustomer = (id) => {
+  if (!id) {
+    sF(p => ({
+      ...p,
+      customer_id:'',
+    }))
+    return
+  }
+
+  const c = data.customers.find(x => x.id === parseInt(id))
+  if (!c) return
+
+  sF(p => ({
+    ...p,
+    customer_id: id,
+    customer: c.name || '',
+    phone: c.phone || '',
+    address: c.address || '',
+    customer_type: c.customer_type || 'عميل',
+  }))
+}
 
   const save = async () => {
     if (!f.customer?.trim()) { sE('❌ يجب ملء اسم العميل'); return }
-    if (!f.zone) { sE('❌ يجب اختيار المنطقة'); return }
-    if (!f.value || parseFloat(f.value) <= 0) { sE('❌ يجب ملء القيمة (أكبر من صفر)'); return }
-    if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) { sE('❌ يجب كتابة سبب فشل التسليم'); return }
-    if (f.status === 'ملغي' && !f.cancel_reason?.trim()) { sE('❌ يجب كتابة سبب الإلغاء'); return }
-    if (f.status === 'مرتجع' && !f.return_reason?.trim()) { sE('❌ يجب كتابة سبب المرتجع'); return }
+if (!f.zone) { sE('❌ يجب اختيار المنطقة'); return }
+if (!f.value || toNum(f.value) <= 0) { sE('❌ يجب ملء القيمة (أكبر من صفر)'); return }
+if (f.status === 'فشل التسليم' && !f.fail_reason?.trim()) { sE('❌ يجب كتابة سبب فشل التسليم'); return }
+if (f.status === 'ملغي' && !f.cancel_reason?.trim()) { sE('❌ يجب كتابة سبب الإلغاء'); return }
+if (f.status === 'مرتجع' && !f.return_reason?.trim()) { sE('❌ يجب كتابة سبب المرتجع'); return }
 
-    setSaving(true); sE('')
+let collectionAmount = toNum(f.collection_amount)
+
+if (!f.collection_amount && ['كاش','فيزا','محفظة'].includes(f.payment_method)) {
+  collectionAmount = toNum(f.value)
+}
+
+if (collectionAmount < 0) { sE('❌ مبلغ التحصيل لا يمكن يكون سالب'); return }
+if (collectionAmount > (previousBalancePreview + toNum(f.value))) { sE('❌ مبلغ التحصيل أكبر من إجمالي المطلوب من العميل'); return }
+if (collectionAmount > 0 && !f.collection_date) { sE('❌ لازم تحدد تاريخ التحصيل'); return }
+if (collectionAmount > 0 && f.payment_method === 'كاش' && !f.collection_shift_type) { sE('❌ لازم تحدد شفت التحصيل للكاش'); return }
+
+setSaving(true); sE('')
 
     try {
-      const payload = {
-        customer: f.customer.trim(),
-        phone: f.phone || '',
-        address: f.address || '',
-        zone: f.zone,
-        value: parseFloat(f.value) || 0,
-        driver_id: f.driver_id ? parseInt(f.driver_id) : null,
-        delivery_fee: fee,
-        products: JSON.stringify(f.products),
-        status: f.status,
-        notes: f.notes || '',
-        customer_type: f.customer_type || 'عميل',
-        payment_method: f.payment_method || 'كاش',
-        due_date: f.due_date || null,
-        no_fee: f.no_fee || false,
-        fail_reason: f.fail_reason || '',
-        cancel_reason: f.cancel_reason || '',
-        return_reason: f.return_reason || '',
-      }
+  const customerRes = await findOrCreateCustomer(f)
 
-      let result
+  if (customerRes.error || !customerRes.customerId) {
+    sE(`❌ خطأ العميل: ${customerRes.error || 'تعذر حفظ العميل'}`)
+    setSaving(false)
+    return
+  }
+
+  const payload = {
+    customer_id: customerRes.customerId,
+    customer: f.customer.trim(),
+    phone: f.phone || '',
+    address: f.address || '',
+    zone: f.zone,
+    value: toNum(f.value),
+    driver_id: f.driver_id ? parseInt(f.driver_id) : null,
+    delivery_fee: fee,
+    products: JSON.stringify(f.products),
+    status: f.status,
+    notes: f.notes || '',
+    customer_type: f.customer_type || 'عميل',
+    payment_method: f.payment_method || 'كاش',
+    due_date: f.due_date || null,
+    no_fee: f.no_fee || false,
+    fail_reason: f.fail_reason || '',
+    cancel_reason: f.cancel_reason || '',
+    return_reason: f.return_reason || '',
+    collection_amount: collectionAmount,
+    collection_date: collectionAmount > 0 ? (f.collection_date || today) : null,
+    collection_shift_type: collectionAmount > 0 ? (f.collection_shift_type || null) : null,
+  }
+
+  let result
       if (order) {
         result = await supabase.from('delivery_orders').update(payload).eq('id', order.id)
       } else {
@@ -1598,17 +1817,70 @@ function OrderModal({ data, order, onClose, refetch }) {
     <Modal title={order ? '✏ تعديل الطلب' : '➕ طلب جديد'} onClose={onClose} wide>
       <Err msg={err}/>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-        <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
-        <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
-        <Fld label="العنوان"><Inp value={f.address} onChange={set('address')} prefix="📍"/></Fld>
-        <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
-        <Fld label="القيمة (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
-        <Fld label="نوع العميل"><Sel value={f.customer_type} onChange={set('customer_type')} options={[{v:'عميل',l:'👤 عميل'},{v:'دليفري',l:'🚚 دليفري'}]}/></Fld>
-        <Fld label="التحصيل"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
-        {f.payment_method === 'أجل' && <Fld label="تاريخ الاستحقاق"><Inp type="date" value={f.due_date} onChange={set('due_date')}/></Fld>}
-        <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={ALL_STATUS.map(v=>({v,l:`${SC[v]?.icon||''} ${v}`}))}/></Fld>
-        <Fld label="المندوب"><Sel value={f.driver_id||''} onChange={set('driver_id')} options={[{v:'',l:'بدون تعيين'}, ...data.drivers.map(d=>({v:d.id,l:`${d.name} (${d.zone})`}))]}/></Fld>
-      </div>
+  <Fld label="عميل محفوظ">
+    <Sel
+      value={f.customer_id || ''}
+      onChange={applyCustomer}
+      options={[
+        { v:'', l:'عميل جديد / اكتب يدوي' },
+        ...data.customers.map(c => ({
+          v: c.id,
+          l: `${c.name}${c.phone ? ` — ${c.phone}` : ''}`,
+        }))
+      ]}
+    />
+  </Fld>
+
+  <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
+  <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
+  <Fld label="العنوان"><Inp value={f.address} onChange={set('address')} prefix="📍"/></Fld>
+  <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
+  <Fld label="قيمة الأوردر (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
+  <Fld label="نوع العميل"><Sel value={f.customer_type} onChange={set('customer_type')} options={[{v:'عميل',l:'👤 عميل'},{v:'دليفري',l:'🚚 دليفري'}]}/></Fld>
+  <Fld label="طريقة الدفع"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
+  {f.payment_method === 'أجل' && <Fld label="تاريخ الاستحقاق"><Inp type="date" value={f.due_date} onChange={set('due_date')}/></Fld>}
+  <Fld label="مبلغ التحصيل"><Inp type="number" value={f.collection_amount} onChange={set('collection_amount')} suffix="ج"/></Fld>
+  <Fld label="تاريخ التحصيل"><Inp type="date" value={f.collection_date} onChange={set('collection_date')}/></Fld>
+  <Fld label="شفت التحصيل">
+    <Sel
+      value={f.collection_shift_type || ''}
+      onChange={set('collection_shift_type')}
+      options={[
+        { v:'', l:'بدون' },
+        { v:'صباحي', l:'☀️ صباحي' },
+        { v:'مسائي', l:'🌙 مسائي' },
+      ]}
+    />
+  </Fld>
+  <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={ALL_STATUS.map(v=>({v,l:`${SC[v]?.icon||''} ${v}`}))}/></Fld>
+  <Fld label="المندوب"><Sel value={f.driver_id||''} onChange={set('driver_id')} options={[{v:'',l:'بدون تعيين'}, ...data.drivers.map(d=>({v:d.id,l:`${d.name} (${d.zone})`}))]}/></Fld>
+</div>
+
+<div style={{ background:'rgba(168,85,247,.08)', border:'1px solid rgba(168,85,247,.2)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+  <div style={{ fontSize:12, fontWeight:800, color:'#d8b4fe', marginBottom:8 }}>📒 ملخص حساب العميل</div>
+
+  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:10 }}>
+    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>الرصيد السابق</div>
+      <div style={{ fontSize:15, fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(previousBalancePreview)} ج</div>
+    </div>
+
+    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>قيمة الأوردر</div>
+      <div style={{ fontSize:15, fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(toNum(f.value))} ج</div>
+    </div>
+
+    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>مبلغ التحصيل</div>
+      <div style={{ fontSize:15, fontWeight:800, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(collectionAmountPreview)} ج</div>
+    </div>
+
+    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+      <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>الرصيد بعد الحركة</div>
+      <div style={{ fontSize:15, fontWeight:800, color:'#f97316', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(balanceAfterPreview)} ج</div>
+    </div>
+  </div>
+</div>
 
       <div onClick={() => set('no_fee')(!f.no_fee)} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', background:'rgba(255,255,255,.04)', borderRadius:10, marginBottom:12, cursor:'pointer', marginTop:4, transition:'background .15s' }} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.04)'}>
         <Checkbox checked={f.no_fee} onChange={() => set('no_fee')(!f.no_fee)}/>
@@ -2808,6 +3080,226 @@ const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.d
 }
 
 // ══════════════════════════════════════════════════════
+//  TREASURY PAGE
+// ══════════════════════════════════════════════════════
+function Treasury({ data }) {
+  const [selectedDate, setSelectedDate] = useState(toDayKey(new Date()))
+
+  const dayCollections = useMemo(
+    () => (data.orders || []).filter(o =>
+      o.collection_date === selectedDate && toNum(o.collection_amount) > 0
+    ),
+    [data.orders, selectedDate]
+  )
+
+  const creditCustomerIds = useMemo(() => {
+    const ids = new Set()
+    ;(data.orders || []).forEach(o => {
+      if (o.payment_method === 'أجل' && o.customer_id) ids.add(o.customer_id)
+    })
+    return ids
+  }, [data.orders])
+
+  const creditCustomers = useMemo(
+    () => (data.customers || []).filter(c => creditCustomerIds.has(c.id)),
+    [data.customers, creditCustomerIds]
+  )
+
+  const creditCollectedToday = sumValues(
+    dayCollections.filter(o => o.payment_method === 'أجل'),
+    'collection_amount'
+  )
+
+  const creditRemaining = creditCustomers.reduce(
+    (s, c) => s + Math.max(toNum(c.current_balance), 0),
+    0
+  )
+
+  const morningPilot = sumValues(
+    dayCollections.filter(o =>
+      o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي'
+    ),
+    'collection_amount'
+  )
+
+  const eveningPilot = sumValues(
+    dayCollections.filter(o =>
+      o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي'
+    ),
+    'collection_amount'
+  )
+
+  const walletPilot = sumValues(
+    dayCollections.filter(o => ['فيزا', 'محفظة'].includes(o.payment_method)),
+    'collection_amount'
+  )
+
+  const uncategorizedCash = sumValues(
+    dayCollections.filter(o =>
+      o.payment_method === 'كاش' && !o.collection_shift_type
+    ),
+    'collection_amount'
+  )
+
+  const totalTreasury = creditCollectedToday + morningPilot + eveningPilot + walletPilot
+  const totalCollectedToday = sumValues(dayCollections, 'collection_amount')
+
+  const treasuryRows = dayCollections.map(o => {
+    let bucket = 'عملاء أجل'
+    let bucketColor = '#f59e0b'
+
+    if (['فيزا', 'محفظة'].includes(o.payment_method)) {
+      bucket = 'طيار محفظة'
+      bucketColor = '#a855f7'
+    } else if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') {
+      bucket = 'طيار صباحي'
+      bucketColor = '#10b981'
+    } else if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') {
+      bucket = 'طيار مسائي'
+      bucketColor = '#3b5bfe'
+    } else if (o.payment_method === 'كاش' && !o.collection_shift_type) {
+      bucket = 'كاش بدون شفت'
+      bucketColor = '#ef4444'
+    }
+
+    return { ...o, bucket, bucketColor }
+  })
+
+  return (
+    <div className="page-enter">
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="📅 تاريخ الخزنة" value={selectedDate} color="#3b5bfe"/>
+        <Kpi label="💰 إجمالي المحصل اليوم" value={fmt(totalCollectedToday)} color="#10b981" sub="جنيه"/>
+        <Kpi label="🏦 إجمالي الخزنة المصنفة" value={fmt(totalTreasury)} color="#ca8a04" sub="جنيه"/>
+        <Kpi label="📒 متبقي عملاء الأجل" value={fmt(creditRemaining)} color="#f59e0b" sub="جنيه"/>
+      </div>
+
+      <Card neon>
+        <SectionTitle>🏦 الخزنة اليومية</SectionTitle>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, marginBottom:14 }}>
+          <Fld label="اختر اليوم">
+            <Inp type="date" value={selectedDate} onChange={setSelectedDate}/>
+          </Fld>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+          <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.2)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>عملاء الأجل — المحصل</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>
+              {fmt(creditCollectedToday)} ج
+            </div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
+              المتبقي عليهم: {fmt(creditRemaining)} ج
+            </div>
+          </div>
+
+          <div style={{ background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.2)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار صباحي</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#6ee7b7', fontFamily:"'JetBrains Mono',monospace" }}>
+              {fmt(morningPilot)} ج
+            </div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
+              كاش شفت صباحي فقط
+            </div>
+          </div>
+
+          <div style={{ background:'rgba(59,130,246,.08)', border:'1px solid rgba(59,130,246,.2)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار مسائي</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#93c5fd', fontFamily:"'JetBrains Mono',monospace" }}>
+              {fmt(eveningPilot)} ج
+            </div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
+              كاش شفت مسائي فقط
+            </div>
+          </div>
+
+          <div style={{ background:'rgba(168,85,247,.08)', border:'1px solid rgba(168,85,247,.2)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار محفظة</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#d8b4fe', fontFamily:"'JetBrains Mono',monospace" }}>
+              {fmt(walletPilot)} ج
+            </div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
+              فيزا + محفظة
+            </div>
+          </div>
+        </div>
+
+        {uncategorizedCash > 0 && (
+          <div style={{ marginTop:14, background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:12, padding:'12px 16px', color:'#fca5a5', fontSize:13, fontWeight:700 }}>
+            ⚠️ يوجد مبلغ كاش بدون شفت = {fmt(uncategorizedCash)} ج
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle>📋 تفاصيل التحصيل لليوم</SectionTitle>
+        <Tbl cols={['#','العميل','طريقة الدفع','مبلغ التحصيل','شفت التحصيل','تصنيف الخزنة','الرصيد بعد الحركة']} rows={
+          treasuryRows.map(o => (
+            <Tr key={o.id}>
+              <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>#{o.id}</Td>
+              <Td style={{ fontWeight:700, color:'white' }}>{o.customer}</Td>
+              <Td>
+                <span style={{
+                  fontSize:11,
+                  fontWeight:700,
+                  padding:'3px 8px',
+                  borderRadius:7,
+                  background:'rgba(255,255,255,.06)',
+                  color:PAY_C[o.payment_method] || 'white'
+                }}>
+                  {PAY_ICONS[o.payment_method]} {o.payment_method}
+                </span>
+              </Td>
+              <Td style={{ fontWeight:800, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(o.collection_amount || 0)} ج
+              </Td>
+              <Td style={{ color:'rgba(255,255,255,.55)' }}>{o.collection_shift_type || '—'}</Td>
+              <Td>
+                <span style={{
+                  fontSize:11,
+                  fontWeight:700,
+                  padding:'3px 8px',
+                  borderRadius:7,
+                  background:o.bucketColor + '22',
+                  color:o.bucketColor
+                }}>
+                  {o.bucket}
+                </span>
+              </Td>
+              <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(o.balance_after || 0)} ج
+              </Td>
+            </Tr>
+          ))
+        }/>
+      </Card>
+
+      <Card>
+        <SectionTitle>📒 رصيد عملاء الأجل الحالي</SectionTitle>
+        <Tbl cols={['العميل','التليفون','إجمالي الأوردرات','إجمالي التحصيل','الرصيد الحالي']} rows={
+          creditCustomers.map(c => (
+            <Tr key={c.id}>
+              <Td style={{ fontWeight:800, color:'white' }}>{c.name}</Td>
+              <Td style={{ color:'rgba(255,255,255,.5)' }}>{c.phone || '—'}</Td>
+              <Td style={{ color:'#7b9fff', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(c.total_orders_value || 0)} ج
+              </Td>
+              <Td style={{ color:'#10b981', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(c.total_collected || 0)} ج
+              </Td>
+              <Td style={{ color:'#f59e0b', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(c.current_balance || 0)} ج
+              </Td>
+            </Tr>
+          ))
+        }/>
+      </Card>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 //  NOTIFICATIONS
 // ══════════════════════════════════════════════════════
 function Notifs({ data }) {
@@ -3038,6 +3530,85 @@ function UserForm({ user_, onClose, refetch }) {
         </Fld>
       </div>
       <div style={{ display:'flex', gap:10, marginTop:8 }}><Btn onClick={save} color="#3b5bfe">💾 حفظ</Btn><Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn></div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+//  CUSTOMERS PAGE
+// ══════════════════════════════════════════════════════
+function Customers({ data }) {
+  const [srch, setSrch] = useState('')
+
+  const list = useMemo(() => {
+    const base = data.customers || []
+    if (!srch.trim()) return base
+
+    return base
+      .map(c => ({
+        c,
+        score: weightedSearchScore(srch, [
+          { value: c.name, weight: 8 },
+          { value: c.phone, weight: 6 },
+          { value: c.address, weight: 4 },
+          { value: c.customer_type, weight: 4 },
+          { value: String(c.current_balance || ''), weight: 3 },
+        ])
+      }))
+      .filter(x => x.score > 0)
+      .sort((a,b) => b.score - a.score)
+      .map(x => x.c)
+  }, [data.customers, srch])
+
+  const totalBalance = (data.customers || []).reduce((s,c) => s + toNum(c.current_balance), 0)
+  const totalOrdersValue = (data.customers || []).reduce((s,c) => s + toNum(c.total_orders_value), 0)
+  const totalCollected = (data.customers || []).reduce((s,c) => s + toNum(c.total_collected), 0)
+
+  return (
+    <div className="page-enter">
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="👥 إجمالي العملاء" value={(data.customers || []).length} color="#3b5bfe"/>
+        <Kpi label="💰 إجمالي المديونية" value={fmt(totalBalance)} color="#f59e0b" sub="جنيه"/>
+        <Kpi label="📦 إجمالي قيمة الأوردرات" value={fmt(totalOrdersValue)} color="#7b9fff" sub="جنيه"/>
+        <Kpi label="✅ إجمالي التحصيل" value={fmt(totalCollected)} color="#10b981" sub="جنيه"/>
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:12, background:'rgba(255,255,255,.03)', padding:'10px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,.06)' }}>
+        <Inp value={srch} onChange={setSrch} placeholder="🔍 ابحث باسم العميل أو الرقم أو الرصيد..." style={{ width:320, padding:'6px 11px', fontSize:12 }}/>
+        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>{list.length} عميل</span>
+      </div>
+
+      <Card>
+        <Tbl cols={['العميل','التليفون','النوع','إجمالي الأوردرات','إجمالي التحصيل','الرصيد الحالي','آخر حركة']} rows={
+          list.map(c => (
+            <Tr key={c.id} hi={toNum(c.current_balance) > 0 ? 'rgba(245,158,11,.04)' : undefined}>
+              <Td>
+                <div>
+                  <div style={{ fontWeight:800, color:'white', fontSize:13 }}>{c.name}</div>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{c.address || '—'}</div>
+                </div>
+              </Td>
+              <Td style={{ color:'rgba(255,255,255,.55)', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{c.phone || '—'}</Td>
+              <Td>
+                <span style={{
+                  fontSize:11,
+                  fontWeight:700,
+                  padding:'3px 8px',
+                  borderRadius:8,
+                  background:c.customer_type === 'دليفري' ? 'rgba(168,85,247,.15)' : 'rgba(6,182,212,.15)',
+                  color:c.customer_type === 'دليفري' ? '#d8b4fe' : '#67e8f9'
+                }}>
+                  {c.customer_type || 'عميل'}
+                </span>
+              </Td>
+              <Td style={{ color:'#7b9fff', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(c.total_orders_value || 0)} ج</Td>
+              <Td style={{ color:'#10b981', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(c.total_collected || 0)} ج</Td>
+              <Td style={{ color:toNum(c.current_balance) > 0 ? '#fcd34d' : '#10b981', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>{fmt(c.current_balance || 0)} ج</Td>
+              <Td style={{ color:'rgba(255,255,255,.35)', fontSize:11 }}>{fmtDate(c.last_order_at)}</Td>
+            </Tr>
+          ))
+        }/>
+      </Card>
     </div>
   )
 }
@@ -3955,7 +4526,7 @@ function SmartSearchModal({ data, onClose, setPage }) {
       footer={
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'rgba(255,255,255,.35)' }}>
-            الطلبات • المندوبين • المناطق • المركبات • الرحلات • المستخدمين • التقفيل اليومي
+            الطلبات • العملاء • المندوبين • المناطق • المركبات • الرحلات • المستخدمين • التقفيل اليومي
           </span>
           <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontFamily:"'JetBrains Mono',monospace" }}>
             Ctrl + K • ↑ ↓ • Enter • Esc
@@ -4100,9 +4671,10 @@ export default function DeliverySystem() {
 
   const renderPage = () => {
     switch (page) {
-      case 'home':      return <Home          {...props} setPage={setPage}/>
-      case 'orders':    return <Orders        {...props}/>
-      case 'analytics': return <Analytics     data={data}/>
+     case 'home':      return <Home          {...props} setPage={setPage}/>
+case 'orders':    return <Orders        {...props}/>
+case 'customers': return <Customers     data={data}/>
+case 'analytics': return <Analytics     data={data}/>
       case 'prep':      return <PrepStation   data={data} refetch={refetch}/>
       case 'tracking':  return <DeliveryTracker data={data} refetch={refetch}/>
       case 'shifts':    return <DailyShifts   data={data} refetch={refetch}/>
@@ -4111,6 +4683,7 @@ export default function DeliverySystem() {
       case 'vehicles':  return <Vehicles      {...props}/>
       case 'trips':     return <Trips         {...props}/>
       case 'pricing':   return <Pricing       {...props}/>
+      case 'treasury':  return <Treasury      data={data}/>
       case 'daily_close': return <DailyClosing  data={data} refetch={refetch}/>
       case 'report':    return <Report        data={data}/>
       case 'notifs':    return <Notifs        data={data}/>
