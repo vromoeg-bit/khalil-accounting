@@ -389,6 +389,7 @@ const buildSmartSearchResults = (data, query) => {
       { value: o.payment_method, weight: 3 },
       { value: o.customer_type, weight: 4 },
       { value: o.notes, weight: 2 },
+      { value: o.order_source, weight: 5 },
       { value: productsText, weight: 6 },
     ])
 
@@ -1508,6 +1509,7 @@ function Orders({ data, refetch, user }) {
         { value: o.payment_method, weight: 3 },
         { value: o.customer_type, weight: 4 },
         { value: o.notes, weight: 2 },
+        { value: o.order_source, weight: 5 },
         { value: productsText, weight: 6 },
       ])
 
@@ -1571,7 +1573,7 @@ function Orders({ data, refetch, user }) {
       drivers.find(d=>d.id===o.driver_id)?.name || '',
       fmtDate(o.created_at)
     ]),
-    ['#','العميل','التليفون','المنطقة','قيمة الأوردر','الرصيد السابق','مبلغ التحصيل','الرصيد الحالي','طريقة الدفع','شفت التحصيل','الحالة','المندوب','التاريخ'],
+    ['#','العميل','التليفون','أداة الاستقبال','المنطقة','قيمة الأوردر','الرصيد السابق','مبلغ التحصيل','الرصيد الحالي','طريقة الدفع','شفت التحصيل','الحالة','المندوب','التاريخ'],
     `orders_${today}.csv`
   )
   toast.success('تم تصدير الطلبات')
@@ -1730,6 +1732,7 @@ function Orders({ data, refetch, user }) {
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, fontSize:12 }}>
   {[
     ['العنوان', o.address || '—'],
+    ['أداة الاستقبال', o.order_source || '—'],
     ['الرصيد السابق', `${fmt(o.previous_balance || 0)} ج`],
     ['قيمة الأوردر', `${fmt(o.value || 0)} ج`],
     ['مبلغ التحصيل', `${fmt(o.collection_amount || 0)} ج`],
@@ -1784,6 +1787,7 @@ const def = {
   collection_amount:'',
   collection_date:today,
   collection_shift_type:'',
+  order_source:'',
 }
 const [customerSearch, setCustomerSearch] = useState(
   order ? `${order.customer || ''}${order.phone ? ` — ${order.phone}` : ''}` : ''
@@ -2039,7 +2043,10 @@ setSaving(true); sE('')
   <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
   <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
   <Fld label="العنوان"><Inp value={f.address} onChange={set('address')} prefix="📍"/></Fld>
-  <Fld label="المنطقة" required>
+<Fld label="أداة الاستقبال">
+  <Inp value={f.order_source} onChange={set('order_source')} prefix="📝" placeholder="مثال: واتساب / تليفون / فيسبوك / من الفرع"/>
+</Fld>
+<Fld label="المنطقة" required>
   <Sel
     value={f.zone}
     onChange={set('zone')}
@@ -4214,6 +4221,7 @@ function ComplaintModal({ data, complaint, onClose, refetch }) {
         customer_name: f.customer.trim(),
         phone: f.phone?.trim() || null,
         address: f.address?.trim() || '',
+        order_source: f.order_source?.trim() || '',
         customer_type: f.customer_type || 'عميل',
         type: f.type,
         title: f.title.trim(),
