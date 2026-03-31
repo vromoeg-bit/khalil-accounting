@@ -8,9 +8,10 @@ import { supabase } from '../lib/supabase'
 //  FONT INJECTION + GLOBAL KEYFRAMES
 // ══════════════════════════════════════════════════════
 const injectStyles = () => {
-  if (document.getElementById('ds-global-styles')) return
-  const s = document.createElement('style')
-  s.id = 'ds-global-styles'
+  if (document.getElementById('ds-global-styles')) return;
+
+  const s = document.createElement('style');
+  s.id = 'ds-global-styles';
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -36,43 +37,62 @@ const injectStyles = () => {
     @keyframes blink    { 0%,100%{opacity:1} 40%{opacity:0} }
     @keyframes zoomIn   { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
 
-    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) }
-    .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both }
+    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1); }
+    .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both; }
     .sidebar-item:hover { background: rgba(59,91,254,.18) !important; color: white !important; }
-    .shimmer-bg { background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%); background-size:400px 100%; animation:shimmer 1.4s infinite linear; }
+    .shimmer-bg {
+      background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%);
+      background-size: 400px 100%;
+      animation: shimmer 1.4s infinite linear;
+    }
 
-    ::-webkit-scrollbar { width:5px; height:5px }
-    ::-webkit-scrollbar-track { background:transparent }
-    ::-webkit-scrollbar-thumb { background:rgba(59,91,254,.35); border-radius:4px }
-    ::-webkit-scrollbar-thumb:hover { background:rgba(59,91,254,.6) }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(59,91,254,.35); border-radius:4px; }
+    ::-webkit-scrollbar-thumb:hover { background:rgba(59,91,254,.6); }
 
-    select option { background:#0f1117 !important; color:white !important }
-    input[type=number]::-webkit-inner-spin-button { opacity:.4 }
+    select option { background:#0f1117 !important; color:white !important; }
+    input[type=number]::-webkit-inner-spin-button { opacity:.4; }
 
-    .neon-border { box-shadow: 0 0 0 1px rgba(59,91,254,.3), 0 0 15px rgba(59,91,254,.1) }
-    .urgent-pulse { animation: pulse 1.5s ease-in-out infinite }
-    .float-anim  { animation: float 3s ease-in-out infinite }
-    .glow-anim   { animation: glow 2.5s ease-in-out infinite }
+    .neon-border { box-shadow: 0 0 0 1px rgba(59,91,254,.3), 0 0 15px rgba(59,91,254,.1); }
+    .urgent-pulse { animation: pulse 1.5s ease-in-out infinite; }
+    .float-anim  { animation: float 3s ease-in-out infinite; }
+    .glow-anim   { animation: glow 2.5s ease-in-out infinite; }
 
-    .tbl-row:hover td { background: rgba(59,91,254,.05) !important }
-    .tbl-row { transition: all .15s }
+    .tbl-row:hover td { background: rgba(59,91,254,.05) !important; }
+    .tbl-row { transition: all .15s; }
 
-    .btn-ripple { position:relative; overflow:hidden }
-    .btn-ripple::after { content:''; position:absolute; border-radius:50%; background:rgba(255,255,255,.3); width:20px; height:20px; top:50%; left:50%; transform:scale(0); animation:none }
-    .btn-ripple:active::after { animation:ripple .4s ease-out }
+    .btn-ripple { position:relative; overflow:hidden; }
+    .btn-ripple::after {
+      content:'';
+      position:absolute;
+      border-radius:50%;
+      background:rgba(255,255,255,.3);
+      width:20px;
+      height:20px;
+      top:50%;
+      left:50%;
+      transform:scale(0);
+      animation:none;
+    }
+    .btn-ripple:active::after { animation:ripple .4s ease-out; }
 
-    .status-badge { transition: all .2s }
-    .card-hover { transition: all .2s }
-    .card-hover:hover { transform:translateY(-2px); border-color:rgba(59,91,254,.3) !important; box-shadow:0 8px 24px rgba(0,0,0,.3) }
+    .status-badge { transition: all .2s; }
+    .card-hover { transition: all .2s; }
+    .card-hover:hover {
+      transform:translateY(-2px);
+      border-color:rgba(59,91,254,.3) !important;
+      box-shadow:0 8px 24px rgba(0,0,0,.3);
+    }
 
     @media print {
-      .no-print { display:none !important }
-      body { background:white !important; color:black !important }
-      .print-area { background:white !important; color:black !important; padding:20px }
+      .no-print { display:none !important; }
+      body { background:white !important; color:black !important; }
+      .print-area { background:white !important; color:black !important; padding:20px; }
     }
-  `
-  document.head.appendChild(s)
-}
+  `;
+  document.head.appendChild(s);
+};
 
 // ══════════════════════════════════════════════════════
 //  CONSTANTS
