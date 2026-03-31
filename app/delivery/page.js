@@ -117,6 +117,32 @@ const FEEDBACK_SC = {
   'تم الحل':      { bg:'rgba(16,185,129,.15)', c:'#6ee7b7', d:'#10b981', icon:'✅' },
   'مغلق':         { bg:'rgba(107,114,128,.15)', c:'#d1d5db', d:'#9ca3af', icon:'📁' },
 }
+const HR_HOURLY_RATE = 30
+const HR_ORDER_BONUS = 10
+
+const calcWorkedMinutes = (startTime, endTime) => {
+  if (!startTime || !endTime) return 0
+
+  const [sh, sm] = String(startTime).split(':').map(Number)
+  const [eh, em] = String(endTime).split(':').map(Number)
+
+  if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return 0
+
+  let start = sh * 60 + sm
+  let end = eh * 60 + em
+
+  // لو الشيفت عدى على نص الليل
+  if (end < start) end += 24 * 60
+
+  return Math.max(end - start, 0)
+}
+
+const fmtMinutes = (mins = 0) => {
+  const total = parseInt(mins || 0, 10) || 0
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${h}س ${m}د`
+}
 const NAV = [
   { id:'home',      label:'الرئيسية',    icon:'🏠', group:'main' },
   { id:'orders',    label:'الطلبات',     icon:'📦', group:'main' },
@@ -133,6 +159,7 @@ const NAV = [
  { id:'pricing',   label:'الأسعار',     icon:'💰', group:'config' },
   { id:'treasury',  label:'الخزنة',      icon:'🏦', group:'config' },
   { id:'daily_close', label:'التقفيل اليومي', icon:'🧾', group:'config' },
+  { id:'hr', label:'HR - الرواتب', icon:'🧑‍💼', group:'config' },
   { id:'report',    label:'التقارير',    icon:'📊', group:'config' },
   { id:'notifs',    label:'التنبيهات',   icon:'🔔', group:'config' },
   { id:'settings',  label:'الإعدادات',   icon:'⚙', group:'config' },
@@ -1091,7 +1118,8 @@ function useData() {
   users:[],
   settings:{},
   shifts:[],
-  dailyClosings:[]
+  dailyClosings:[],
+  hrShifts:[]
 })
 
   const [loading, setLoading] = useState(true)
@@ -1102,7 +1130,7 @@ function useData() {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
 
-    const [ord, cus, cmp, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
+    const [ord, cus, cmp, drv, zon, veh, trp, usr, set, shf, dcl, hrs] = await Promise.all([
   supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
   supabase.from('delivery_customers').select('*').order('updated_at', { ascending:false }),
 supabase.from('delivery_feedback').select('*').order('created_at', { ascending:false }),
@@ -1114,9 +1142,10 @@ supabase.from('delivery_drivers').select('*'),
   supabase.from('delivery_settings').select('*').maybeSingle(),
   supabase.from('delivery_shifts').select('*').order('created_at', { ascending:false }).limit(30),
   supabase.from('delivery_daily_closings').select('*').order('report_date', { ascending:false }),
+    supabase.from('delivery_hr_shifts').select('*').order('work_date', { ascending:false }),
 ])
 
-    if (ord.error || cus.error || cmp.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
+    if (ord.error || cus.error || cmp.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error || hrs.error) {
       console.error('Supabase error:', {
   ord: ord.error,
   cus: cus.error,
@@ -1128,7 +1157,9 @@ supabase.from('delivery_drivers').select('*'),
   usr: usr.error,
   set: set.error,
   shf: shf.error,
+  hrs: hrs.error,
   dcl: dcl.error
+  
 })
 
       toast.error('حصل خطأ أثناء تحميل البيانات')
@@ -1149,6 +1180,7 @@ supabase.from('delivery_drivers').select('*'),
   },
   shifts: shf.data || [],
   dailyClosings: dcl.data || [],
+  hrShifts: hrs.data || [],
 })
       setLastUpdate(new Date())
     }
@@ -1524,11 +1556,25 @@ function Orders({ data, refetch, user }) {
   const toggleAll   = () => setSel(allSelected ? [] : list.map(o => o.id))
   const toggleOne   = (id) => setSel(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
 
-  const updateStatus = async (id, status) => {
-    const { error } = await supabase.from('delivery_orders').update({ status }).eq('id', id)
-    if (error) { toast.error('حصل خطأ: ' + error.message); return }
-    refetch(); toast.success('تم تحديث الحالة')
+  const updateStatus = async (orderItem, status) => {
+  const patch = {
+    status,
+    delivered_at:
+      status === 'تم التسليم'
+        ? (orderItem.delivered_at || new Date().toISOString())
+        : null,
   }
+
+  const { error } = await supabase
+    .from('delivery_orders')
+    .update(patch)
+    .eq('id', orderItem.id)
+
+  if (error) { toast.error('حصل خطأ: ' + error.message); return }
+
+  refetch()
+  toast.success('تم تحديث الحالة')
+}
 
   // ✅ FIX #5: deleteOrder — setConf(null) only after successful delete
   const deleteOrder = async (id) => {
@@ -1693,7 +1739,7 @@ function Orders({ data, refetch, user }) {
                 </Td>
                 <Td>
                   {can(user,'orders_w')
-                    ? <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ fontSize:11, padding:'3px 7px', borderRadius:7, border:'none', background:(SC[o.status]?.bg)||'rgba(255,255,255,.07)', color:(SC[o.status]?.c)||'white', fontFamily:'inherit', cursor:'pointer' }}>
+                    ? <select value={o.status} onChange={e => updateStatus(o, e.target.value)} style={{ fontSize:11, padding:'3px 7px', borderRadius:7, border:'none', background:(SC[o.status]?.bg)||'rgba(255,255,255,.07)', color:(SC[o.status]?.c)||'white', fontFamily:'inherit', cursor:'pointer' }}>
                         {ALL_STATUS.map(s => <option key={s}>{s}</option>)}
                       </select>
                     : <Badge s={o.status}/>
@@ -1903,6 +1949,10 @@ setSaving(true); sE('')
       collectionAmount > 0 && f.payment_method === 'كاش'
         ? (f.collection_shift_type || null)
         : null,
+        delivered_at:
+  f.status === 'تم التسليم'
+    ? (order?.delivered_at || new Date().toISOString())
+    : null,
   }
 
   let result
@@ -4517,6 +4567,363 @@ function ComplaintModal({ data, complaint, onClose, refetch }) {
   )
 }
 
+function HRShiftModal({ data, row, onClose, refetch }) {
+  const [f, sF] = useState({
+    driver_id: row?.driver_id || '',
+    work_date: row?.work_date || toDayKey(new Date()),
+    start_time: row?.start_time || '09:00',
+    end_time: row?.end_time || '17:00',
+    notes: row?.notes || '',
+  })
+  const [err, sE] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const set = k => v => sF(p => ({ ...p, [k]:v }))
+
+  const workedMinutes = calcWorkedMinutes(f.start_time, f.end_time)
+  const hourPayPreview = Math.round(((workedMinutes / 60) * HR_HOURLY_RATE) * 100) / 100
+
+  const save = async () => {
+    if (!f.driver_id) { sE('اختر الطيار'); return }
+    if (!f.work_date) { sE('اختر التاريخ'); return }
+    if (!f.start_time || !f.end_time) { sE('ادخل وقت البداية والنهاية'); return }
+    if (workedMinutes <= 0) { sE('عدد الدقائق غير صحيح'); return }
+
+    setSaving(true)
+    sE('')
+
+    const payload = {
+      driver_id: parseInt(f.driver_id),
+      work_date: f.work_date,
+      start_time: f.start_time,
+      end_time: f.end_time,
+      worked_minutes: workedMinutes,
+      notes: f.notes || '',
+      updated_at: new Date().toISOString(),
+    }
+
+    let result
+    if (row) {
+      result = await supabase
+        .from('delivery_hr_shifts')
+        .update(payload)
+        .eq('id', row.id)
+    } else {
+      result = await supabase
+        .from('delivery_hr_shifts')
+        .insert([{
+          ...payload,
+          created_at: new Date().toISOString(),
+        }])
+    }
+
+    setSaving(false)
+
+    if (result.error) {
+      sE('خطأ: ' + result.error.message)
+      return
+    }
+
+    toast.success(row ? 'تم تعديل الميعاد' : 'تم حفظ الميعاد')
+    onClose()
+    refetch()
+  }
+
+  return (
+    <Modal
+      title={row ? '✏ تعديل ميعاد الطيار' : '➕ إضافة ميعاد طيار'}
+      onClose={onClose}
+    >
+      <Err msg={err}/>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+        <Fld label="الطيار" required>
+          <Sel
+            value={f.driver_id}
+            onChange={set('driver_id')}
+            options={[
+              { v:'', l:'اختر الطيار' },
+              ...(data.drivers || []).map(d => ({ v:d.id, l:d.name }))
+            ]}
+          />
+        </Fld>
+
+        <Fld label="التاريخ" required>
+          <Inp type="date" value={f.work_date} onChange={set('work_date')}/>
+        </Fld>
+
+        <Fld label="من" required>
+          <Inp type="time" value={f.start_time} onChange={set('start_time')}/>
+        </Fld>
+
+        <Fld label="إلى" required>
+          <Inp type="time" value={f.end_time} onChange={set('end_time')}/>
+        </Fld>
+      </div>
+
+      <div style={{ background:'rgba(59,91,254,.08)', border:'1px solid rgba(59,91,254,.2)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:800, color:'#7b9fff', marginBottom:8 }}>🧮 الحساب التلقائي</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
+          <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>عدد الدقائق</div>
+            <div style={{ fontSize:15, fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{workedMinutes} د</div>
+          </div>
+          <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>عدد الساعات</div>
+            <div style={{ fontSize:15, fontWeight:800, color:'#6ee7b7', fontFamily:"'JetBrains Mono',monospace" }}>{(workedMinutes / 60).toFixed(2)} س</div>
+          </div>
+          <div style={{ background:'rgba(255,255,255,.04)', borderRadius:8, padding:'8px 10px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>أجر الوقت</div>
+            <div style={{ fontSize:15, fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(hourPayPreview)} ج</div>
+          </div>
+        </div>
+      </div>
+
+      <Fld label="ملاحظات">
+        <textarea
+          value={f.notes || ''}
+          onChange={e => set('notes')(e.target.value)}
+          style={{
+            width:'100%',
+            minHeight:60,
+            padding:'9px 13px',
+            background:'rgba(255,255,255,.06)',
+            border:'1px solid rgba(255,255,255,.1)',
+            borderRadius:9,
+            color:'white',
+            fontSize:13,
+            fontFamily:'inherit',
+            direction:'rtl',
+            resize:'vertical'
+          }}
+        />
+      </Fld>
+
+      <div style={{ display:'flex', gap:10 }}>
+        <Btn onClick={save} color="#3b5bfe" loading={saving}>💾 حفظ</Btn>
+        <Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn>
+      </div>
+    </Modal>
+  )
+}
+
+function HRPage({ data, refetch }) {
+  const [month, setMonth] = useState(toDayKey(new Date()).slice(0,7))
+  const [driverId, setDriverId] = useState('')
+  const [modal, setModal] = useState(null)
+  const [conf, setConf] = useState(null)
+
+  const filteredShifts = useMemo(() => {
+    return (data.hrShifts || []).filter(r =>
+      (!month || String(r.work_date || '').startsWith(month)) &&
+      (!driverId || String(r.driver_id) === String(driverId))
+    )
+  }, [data.hrShifts, month, driverId])
+
+  const payrollRows = useMemo(() => {
+    const grouped = {}
+
+    filteredShifts.forEach(r => {
+      const key = `${r.driver_id}__${r.work_date}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          driver_id: r.driver_id,
+          work_date: r.work_date,
+          worked_minutes: 0,
+        }
+      }
+      grouped[key].worked_minutes += parseInt(r.worked_minutes || 0, 10) || 0
+    })
+
+    return Object.values(grouped)
+      .map(row => {
+        const driver = (data.drivers || []).find(d => d.id === row.driver_id)
+
+        const ordersCount = (data.orders || []).filter(o =>
+          o.driver_id === row.driver_id &&
+          o.status === 'تم التسليم' &&
+          toDayKey(o.delivered_at || o.created_at) === row.work_date
+        ).length
+
+        const hourPay = Math.round(((row.worked_minutes / 60) * HR_HOURLY_RATE) * 100) / 100
+        const bonusPay = ordersCount * HR_ORDER_BONUS
+        const totalPay = hourPay + bonusPay
+
+        return {
+          ...row,
+          driver_name: driver?.name || '—',
+          orders_count: ordersCount,
+          hour_pay: hourPay,
+          bonus_pay: bonusPay,
+          total_pay: totalPay,
+        }
+      })
+      .sort((a, b) => {
+        if (a.work_date === b.work_date) return a.driver_name.localeCompare(b.driver_name, 'ar')
+        return b.work_date.localeCompare(a.work_date)
+      })
+  }, [filteredShifts, data.drivers, data.orders])
+
+  const totalWorkedMinutes = payrollRows.reduce((s, r) => s + (r.worked_minutes || 0), 0)
+  const totalHourPay = payrollRows.reduce((s, r) => s + (r.hour_pay || 0), 0)
+  const totalBonusPay = payrollRows.reduce((s, r) => s + (r.bonus_pay || 0), 0)
+  const totalPayroll = payrollRows.reduce((s, r) => s + (r.total_pay || 0), 0)
+
+  const deleteShift = async (row) => {
+    const { error } = await supabase
+      .from('delivery_hr_shifts')
+      .delete()
+      .eq('id', row.id)
+
+    if (error) {
+      toast.error('حصل خطأ: ' + error.message)
+      return
+    }
+
+    setConf(null)
+    toast.success('تم حذف الميعاد')
+    refetch()
+  }
+
+  const exportPayroll = () => {
+    exportCSV(
+      payrollRows.map(r => [
+        r.work_date,
+        r.driver_name,
+        r.worked_minutes,
+        fmtMinutes(r.worked_minutes),
+        r.orders_count,
+        r.hour_pay,
+        r.bonus_pay,
+        r.total_pay
+      ]),
+      ['التاريخ','الطيار','الدقائق','الوقت','الأوردرات','أجر الوقت','بوناص الأوردرات','الإجمالي'],
+      `hr_payroll_${month || 'all'}.csv`
+    )
+    toast.success('تم تصدير كشف الرواتب')
+  }
+
+  return (
+    <div className="page-enter">
+      {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
+      {modal && (
+        <HRShiftModal
+          data={data}
+          row={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          refetch={refetch}
+        />
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="🧑‍💼 أيام الشغل" value={payrollRows.length} color="#3b5bfe"/>
+        <Kpi label="⏱ إجمالي الوقت" value={fmtMinutes(totalWorkedMinutes)} color="#10b981"/>
+        <Kpi label="💰 أجر الساعات" value={fmt(totalHourPay)} color="#f59e0b" sub="جنيه"/>
+        <Kpi label="📦 بوناص الأوردرات" value={fmt(totalBonusPay)} color="#a855f7" sub="جنيه"/>
+        <Kpi label="🏦 إجمالي الرواتب" value={fmt(totalPayroll)} color="#ca8a04" sub="جنيه"/>
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:12, background:'rgba(255,255,255,.03)', padding:'10px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,.06)' }}>
+        <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ إضافة ميعاد</Btn>
+        <Btn onClick={exportPayroll} color="#10b981" small>📥 تصدير CSV</Btn>
+
+        <div style={{ minWidth:170 }}>
+          <Inp type="month" value={month} onChange={setMonth}/>
+        </div>
+
+        <div style={{ minWidth:220 }}>
+          <Sel
+            value={driverId}
+            onChange={setDriverId}
+            options={[
+              { v:'', l:'كل الطيارين' },
+              ...(data.drivers || []).map(d => ({ v:d.id, l:d.name }))
+            ]}
+          />
+        </div>
+
+        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>
+          الساعة = {HR_HOURLY_RATE} ج • بوناص الأوردر = {HR_ORDER_BONUS} ج
+        </span>
+      </div>
+
+      <Card neon>
+        <SectionTitle>🧾 اليومية لكل طيار / لكل يوم</SectionTitle>
+        <Tbl
+          cols={['التاريخ','الطيار','الوقت','عدد الأوردرات','أجر الساعات','البوناص','الإجمالي']}
+          rows={payrollRows.map(r => (
+            <Tr key={`${r.driver_id}-${r.work_date}`}>
+              <Td style={{ color:'#7b9fff', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>
+                {r.work_date}
+              </Td>
+              <Td style={{ color:'white', fontWeight:800 }}>{r.driver_name}</Td>
+              <Td>
+                <div style={{ color:'#6ee7b7', fontWeight:800 }}>{fmtMinutes(r.worked_minutes)}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', fontFamily:"'JetBrains Mono',monospace" }}>
+                  {r.worked_minutes} دقيقة
+                </div>
+              </Td>
+              <Td style={{ color:'#d8b4fe', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                {r.orders_count}
+              </Td>
+              <Td style={{ color:'#fcd34d', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(r.hour_pay)} ج
+              </Td>
+              <Td style={{ color:'#a855f7', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(r.bonus_pay)} ج
+              </Td>
+              <Td style={{ color:'#10b981', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(r.total_pay)} ج
+              </Td>
+            </Tr>
+          ))}
+        />
+      </Card>
+
+      <Card>
+        <SectionTitle>🕒 سجل المواعيد</SectionTitle>
+        <Tbl
+          cols={['الطيار','التاريخ','من','إلى','الدقائق','ملاحظات','إجراء']}
+          rows={filteredShifts.map(r => {
+            const driver = (data.drivers || []).find(d => d.id === r.driver_id)
+            return (
+              <Tr key={r.id}>
+                <Td style={{ color:'white', fontWeight:800 }}>{driver?.name || '—'}</Td>
+                <Td style={{ color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>{r.work_date}</Td>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{r.start_time}</Td>
+                <Td style={{ color:'rgba(255,255,255,.6)', fontFamily:"'JetBrains Mono',monospace" }}>{r.end_time}</Td>
+                <Td style={{ color:'#fcd34d', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {r.worked_minutes} د
+                </Td>
+                <Td style={{ color:'rgba(255,255,255,.4)', fontSize:12 }}>{r.notes || '—'}</Td>
+                <Td>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <Btn onClick={() => setModal(r)} small color="#6b7280">✏</Btn>
+                    <Btn
+                      onClick={() => setConf({
+                        msg:`حذف ميعاد ${driver?.name || 'الطيار'} يوم ${r.work_date}؟`,
+                        ok:() => deleteShift(r)
+                      })}
+                      small
+                      color="#ef4444"
+                    >
+                      🗑
+                    </Btn>
+                  </div>
+                </Td>
+              </Tr>
+            )
+          })}
+        />
+      </Card>
+
+      <div style={{ marginTop:12, background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.22)', borderRadius:12, padding:'12px 14px', color:'#fcd34d', fontSize:12, fontWeight:700 }}>
+        ملاحظة: البوناص حالياً بيتحسب على الأوردرات اللي حالتها <strong>تم التسليم</strong> في نفس اليوم. وده أدق حساب للمرتب.
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════
 //  AUTO-REFRESH BAR
 // ══════════════════════════════════════════════════════
@@ -4778,11 +5185,25 @@ function DeliveryTracker({ data, refetch }) {
     toast.info('تم إيقاف مشاركة الموقع')
   }
 
-  const updateOrderStatus = async (orderId, status) => {
-    const { error } = await supabase.from('delivery_orders').update({ status }).eq('id', orderId)
-    if (error) { toast.error('حصل خطأ: ' + error.message); return }
-    refetch(); toast.success(`تم تحديث الحالة: ${status}`)
+  const updateOrderStatus = async (orderItem, status) => {
+  const patch = {
+    status,
+    delivered_at:
+      status === 'تم التسليم'
+        ? (orderItem.delivered_at || new Date().toISOString())
+        : null,
   }
+
+  const { error } = await supabase
+    .from('delivery_orders')
+    .update(patch)
+    .eq('id', orderItem.id)
+
+  if (error) { toast.error('حصل خطأ: ' + error.message); return }
+
+  refetch()
+  toast.success(`تم تحديث الحالة: ${status}`)
+}
 
   const activeDrivers = drivers.filter(d => d.status === 'شغال')
   const myOrders = myDriverId ? orders.filter(o => o.driver_id === parseInt(myDriverId) && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status)) : []
@@ -4840,10 +5261,10 @@ function DeliveryTracker({ data, refetch }) {
                       </div>
                     </div>
                     <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                      {o.status === 'تم تعيين المندوب' && <Btn onClick={() => updateOrderStatus(o.id, 'في الطريق')} color="#22c55e">🚀 في الطريق</Btn>}
+                      {o.status === 'تم تعيين المندوب' && <Btn onClick={() => updateOrderStatus(o, 'في الطريق')} color="#22c55e">🚀 في الطريق</Btn>}
                       {o.status === 'في الطريق' && <>
-                        <Btn onClick={() => updateOrderStatus(o.id, 'تم التسليم')} color="#10b981">✅ تم التسليم</Btn>
-                        <Btn onClick={() => updateOrderStatus(o.id, 'فشل التسليم')} color="#ef4444" small>❌ فشل</Btn>
+                        <Btn onClick={() => updateOrderStatus(o, 'تم التسليم')} color="#10b981">✅ تم التسليم</Btn>
+                        <Btn onClick={() => updateOrderStatus(o, 'فشل التسليم')} color="#ef4444" small>❌ فشل</Btn>
                       </>}
                       {o.address && (
                         <a href={`https://maps.google.com/?q=${encodeURIComponent(o.address+' '+o.zone)}`} target="_blank" rel="noreferrer"
@@ -5591,6 +6012,7 @@ case 'analytics': return <Analytics     data={data}/>
       case 'pricing':   return <Pricing       {...props}/>
       case 'treasury':  return <Treasury      data={data}/>
       case 'daily_close': return <DailyClosing  data={data} refetch={refetch}/>
+      case 'hr':        return <HRPage        data={data} refetch={refetch}/>
       case 'report':    return <Report        data={data}/>
       case 'notifs':    return <Notifs        data={data}/>
       case 'settings':  return <Settings      data={data} refetch={refetch}/>
