@@ -8,10 +8,9 @@ import { supabase } from '../lib/supabase'
 //  FONT INJECTION + GLOBAL KEYFRAMES
 // ══════════════════════════════════════════════════════
 const injectStyles = () => {
-  if (document.getElementById('ds-global-styles')) return;
-
-  const s = document.createElement('style');
-  s.id = 'ds-global-styles';
+  if (document.getElementById('ds-global-styles')) return
+  const s = document.createElement('style')
+  s.id = 'ds-global-styles'
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -37,62 +36,43 @@ const injectStyles = () => {
     @keyframes blink    { 0%,100%{opacity:1} 40%{opacity:0} }
     @keyframes zoomIn   { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
 
-    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1); }
-    .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both; }
+    .page-enter { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) }
+    .modal-enter { animation: popIn .25s cubic-bezier(.22,1,.36,1) both }
     .sidebar-item:hover { background: rgba(59,91,254,.18) !important; color: white !important; }
-    .shimmer-bg {
-      background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%);
-      background-size: 400px 100%;
-      animation: shimmer 1.4s infinite linear;
-    }
+    .shimmer-bg { background: linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%); background-size:400px 100%; animation:shimmer 1.4s infinite linear; }
 
-    ::-webkit-scrollbar { width:5px; height:5px; }
-    ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:rgba(59,91,254,.35); border-radius:4px; }
-    ::-webkit-scrollbar-thumb:hover { background:rgba(59,91,254,.6); }
+    ::-webkit-scrollbar { width:5px; height:5px }
+    ::-webkit-scrollbar-track { background:transparent }
+    ::-webkit-scrollbar-thumb { background:rgba(59,91,254,.35); border-radius:4px }
+    ::-webkit-scrollbar-thumb:hover { background:rgba(59,91,254,.6) }
 
-    select option { background:#0f1117 !important; color:white !important; }
-    input[type=number]::-webkit-inner-spin-button { opacity:.4; }
+    select option { background:#0f1117 !important; color:white !important }
+    input[type=number]::-webkit-inner-spin-button { opacity:.4 }
 
-    .neon-border { box-shadow: 0 0 0 1px rgba(59,91,254,.3), 0 0 15px rgba(59,91,254,.1); }
-    .urgent-pulse { animation: pulse 1.5s ease-in-out infinite; }
-    .float-anim  { animation: float 3s ease-in-out infinite; }
-    .glow-anim   { animation: glow 2.5s ease-in-out infinite; }
+    .neon-border { box-shadow: 0 0 0 1px rgba(59,91,254,.3), 0 0 15px rgba(59,91,254,.1) }
+    .urgent-pulse { animation: pulse 1.5s ease-in-out infinite }
+    .float-anim  { animation: float 3s ease-in-out infinite }
+    .glow-anim   { animation: glow 2.5s ease-in-out infinite }
 
-    .tbl-row:hover td { background: rgba(59,91,254,.05) !important; }
-    .tbl-row { transition: all .15s; }
+    .tbl-row:hover td { background: rgba(59,91,254,.05) !important }
+    .tbl-row { transition: all .15s }
 
-    .btn-ripple { position:relative; overflow:hidden; }
-    .btn-ripple::after {
-      content:'';
-      position:absolute;
-      border-radius:50%;
-      background:rgba(255,255,255,.3);
-      width:20px;
-      height:20px;
-      top:50%;
-      left:50%;
-      transform:scale(0);
-      animation:none;
-    }
-    .btn-ripple:active::after { animation:ripple .4s ease-out; }
+    .btn-ripple { position:relative; overflow:hidden }
+    .btn-ripple::after { content:''; position:absolute; border-radius:50%; background:rgba(255,255,255,.3); width:20px; height:20px; top:50%; left:50%; transform:scale(0); animation:none }
+    .btn-ripple:active::after { animation:ripple .4s ease-out }
 
-    .status-badge { transition: all .2s; }
-    .card-hover { transition: all .2s; }
-    .card-hover:hover {
-      transform:translateY(-2px);
-      border-color:rgba(59,91,254,.3) !important;
-      box-shadow:0 8px 24px rgba(0,0,0,.3);
-    }
+    .status-badge { transition: all .2s }
+    .card-hover { transition: all .2s }
+    .card-hover:hover { transform:translateY(-2px); border-color:rgba(59,91,254,.3) !important; box-shadow:0 8px 24px rgba(0,0,0,.3) }
 
     @media print {
-      .no-print { display:none !important; }
-      body { background:white !important; color:black !important; }
-      .print-area { background:white !important; color:black !important; padding:20px; }
+      .no-print { display:none !important }
+      body { background:white !important; color:black !important }
+      .print-area { background:white !important; color:black !important; padding:20px }
     }
-  `;
-  document.head.appendChild(s);
-};
+  `
+  document.head.appendChild(s)
+}
 
 // ══════════════════════════════════════════════════════
 //  CONSTANTS
@@ -112,8 +92,8 @@ const SC = {
   'مرتجع':           { bg:'rgba(245,158,11,0.15)', c:'#fcd34d', d:'#f59e0b', icon:'↩️' },
   'ملغي':            { bg:'rgba(107,114,128,0.15)',c:'#d1d5db', d:'#9ca3af', icon:'🚫' },
 }
-const PAY_C = { كاش:'#10b981', فيزا:'#3b82f6', محفظة:'#a855f7', انستاباي:'#14b8a6', أجل:'#f59e0b' }
-const PAY_ICONS = { كاش:'💵', فيزا:'💳', محفظة:'📱', انستاباي:'🏦', أجل:'🔖' }
+const PAY_C = { كاش:'#10b981', فيزا:'#3b82f6', محفظة:'#a855f7', أجل:'#f59e0b' }
+const PAY_ICONS = { كاش:'💵', فيزا:'💳', محفظة:'📱', أجل:'🔖' }
 const isDeliveryOrder = (o) => o.customer_type === 'دليفري'
 const isCustomerOrder = (o) => !isDeliveryOrder(o)
 const ROLES = {
@@ -224,62 +204,6 @@ const exportCSV = (rows, cols, filename) => {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
-}
-
-const normalizeDigits = (v = '') =>
-  String(v).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-
-const normalizeArabic = (v = '') =>
-  normalizeDigits(String(v || ''))
-    .normalize('NFKD')
-    .replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/ـ/g, '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s@#.+\-_:/]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-const toSearchText = (...parts) =>
-  parts
-    .flat(Infinity)
-    .filter(v => v !== null && v !== undefined && v !== '')
-    .map(v => {
-      if (Array.isArray(v)) return v.join(' ')
-      if (typeof v === 'object') return Object.values(v).join(' ')
-      return String(v)
-    })
-    .join(' ')
-
-const tokenizeSmartQuery = (q = '') =>
-  normalizeArabic(q).split(' ').filter(Boolean)
-
-const smartFilter = (list, query, projector) => {
-  const terms = tokenizeSmartQuery(query)
-  if (!terms.length) return list
-
-  return list
-    .map(item => {
-      const hay = normalizeArabic(projector(item))
-      if (!hay) return null
-
-      let score = 0
-
-      for (const term of terms) {
-        const idx = hay.indexOf(term)
-        if (idx === -1) return null
-        score += idx === 0 ? 40 : Math.max(1, 20 - idx)
-      }
-
-      return { item, score }
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
-    .map(x => x.item)
 }
 
 // ══════════════════════════════════════════════════════
@@ -721,103 +645,6 @@ function Modal({ title, onClose, children, footer, wide }) {
     document.body
   )
 }
-
-function GlobalSearchModal({ value, onChange, results, onPick, onClose }) {
-  const groups = useMemo(() => {
-    const map = {}
-    results.forEach(r => {
-      if (!map[r.group]) map[r.group] = []
-      map[r.group].push(r)
-    })
-    return map
-  }, [results])
-
-  return (
-    <Modal title="🔎 البحث الذكي الشامل" onClose={onClose} wide>
-      <div style={{ marginBottom:14 }}>
-        <Inp
-          value={value}
-          onChange={onChange}
-          placeholder="ابحث باسم عميل، رقم طلب، تليفون، عنوان، مندوب، منطقة، مركبة، رحلة، مستخدم..."
-          prefix="🔎"
-        />
-      </div>
-
-      {!value.trim() ? (
-        <div style={{ textAlign:'center', padding:'32px 10px', color:'rgba(255,255,255,.35)', fontSize:13 }}>
-          اكتب أي كلمة للبحث في الطلبات والمندوبين والمناطق والمركبات والرحلات والمستخدمين والشفتات والتقفيل اليومي
-        </div>
-      ) : results.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'32px 10px', color:'rgba(255,255,255,.35)', fontSize:13 }}>
-          لا توجد نتائج
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {Object.entries(groups).map(([group, items]) => (
-            <div key={group}>
-              <div style={{ fontSize:12, fontWeight:800, color:'rgba(255,255,255,.45)', marginBottom:8 }}>
-                {group} <span style={{ color:'rgba(255,255,255,.25)' }}>({items.length})</span>
-              </div>
-
-              <div style={{ display:'grid', gap:8 }}>
-                {items.map(item => (
-                  <button
-                    key={item.key}
-                    onClick={() => onPick(item)}
-                    style={{
-                      background:'rgba(255,255,255,.04)',
-                      border:'1px solid rgba(255,255,255,.08)',
-                      borderRadius:12,
-                      padding:'12px 14px',
-                      textAlign:'right',
-                      cursor:'pointer',
-                      color:'white',
-                      fontFamily:'inherit',
-                      transition:'all .15s'
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(59,91,254,.08)'
-                      e.currentTarget.style.borderColor = 'rgba(59,91,254,.25)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,.04)'
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'
-                    }}
-                  >
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                      <div style={{ minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:800, color:'white' }}>
-                          {item.icon} {item.title}
-                        </div>
-                        <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:4 }}>
-                          {item.subtitle}
-                        </div>
-                      </div>
-
-                      <span
-                        style={{
-                          fontSize:10,
-                          fontWeight:800,
-                          padding:'4px 10px',
-                          borderRadius:999,
-                          background:item.color + '22',
-                          color:item.color,
-                          whiteSpace:'nowrap'
-                        }}
-                      >
-                        {item.badge}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Modal>
-  )
-}
 // ══════════════════════════════════════════════════════
 //  DATA HOOK
 // ══════════════════════════════════════════════════════
@@ -1143,11 +970,9 @@ const delivRate  = orders.length ? Math.round(delivered.length/orders.length*100
           <Card style={{ flex:'0 0 auto' }}>
             <SectionTitle>💳 التحصيل</SectionTitle>
             <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-              <DonutChart data={['كاش','فيزا','محفظة','انستاباي','أجل']
-.map(m => ({ v: orders.filter(o=>o.payment_method===m).length, color:PAY_C[m] }))} size={80}/>
+              <DonutChart data={['كاش','فيزا','محفظة','أجل'].map(m => ({ v: orders.filter(o=>o.payment_method===m).length, color:PAY_C[m] }))} size={80}/>
               <div style={{ flex:1 }}>
-                {['كاش','فيزا','محفظة','انستاباي','أجل']
-.map(m => {
+                {['كاش','فيزا','محفظة','أجل'].map(m => {
                   const cnt = orders.filter(o => o.payment_method === m).length
                   return (
                     <div key={m} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5, fontSize:12 }}>
@@ -1222,33 +1047,13 @@ function Orders({ data, refetch, user }) {
   const today = new Date().toISOString().slice(0,10)
   const { orders, zones, drivers } = data
 
- const list = useMemo(() => {
-    const base = orders.filter(o =>
-      (!fSt   || o.status === fSt) &&
-      (!fZ    || o.zone === fZ) &&
-      (!fPay  || o.payment_method === fPay) &&
-      (!fType || o.customer_type === fType)
-    )
-
-    return smartFilter(base, srch, o => toSearchText(
-      o.id,
-      o.customer,
-      o.phone,
-      o.address,
-      o.zone,
-      o.status,
-      o.payment_method,
-      o.customer_type,
-      o.notes,
-      o.fail_reason,
-      o.cancel_reason,
-      o.return_reason,
-      drivers.find(d => d.id === o.driver_id)?.name || '',
-      parseProducts(o.products).map(p => `${p.name} ${p.qty} ${p.price}`).join(' '),
-      fmtDate(o.created_at),
-      fmtTime(o.created_at)
-    ))
-  }, [orders, fSt, fZ, fPay, fType, srch, drivers])
+  const list = useMemo(() => orders.filter(o =>
+  (!fSt   || o.status === fSt) &&
+  (!fZ    || o.zone === fZ) &&
+  (!fPay  || o.payment_method === fPay) &&
+  (!fType || o.customer_type === fType) &&
+  (!srch  || o.customer?.toLowerCase().includes(srch.toLowerCase()) || String(o.id).includes(srch) || o.phone?.includes(srch))
+), [orders, fSt, fZ, fPay, fType, srch])
 
   const allSelected = selected.length === list.length && list.length > 0
   const toggleAll   = () => setSel(allSelected ? [] : list.map(o => o.id))
@@ -1330,7 +1135,7 @@ function Orders({ data, refetch, user }) {
         {can(user,'orders_w') && <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ طلب جديد</Btn>}
         <Btn onClick={exportOrders} color="#10b981" small title="تصدير CSV">📥 CSV</Btn>
         {selected.length > 0 && <Btn onClick={() => setShowBulk(true)} color="#a855f7" small>⚡ {selected.length} محدد</Btn>}
-        <Inp value={srch} onChange={setSrch} placeholder="🔍 بحث ذكي: عميل / رقم طلب / فون / عنوان / صنف / مندوب..." style={{ width:260, padding:'6px 11px', fontSize:12 }}/>
+        <Inp value={srch} onChange={setSrch} placeholder="🔍 بحث..." style={{ width:160, padding:'6px 11px', fontSize:12 }}/>
         <select value={fSt} onChange={e=>setFSt(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
           <option value=''>كل الحالات</option>{ALL_STATUS.map(s=><option key={s}>{s}</option>)}
         </select>
@@ -1338,8 +1143,7 @@ function Orders({ data, refetch, user }) {
           <option value=''>كل المناطق</option>{data.zones.map(z=><option key={z.id}>{z.name}</option>)}
         </select>
         <select value={fPay} onChange={e=>setFPay(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
-          <option value=''>كل التحصيل</option>{['كاش','فيزا','محفظة','انستاباي','أجل']
-.map(m=><option key={m}>{m}</option>)}
+          <option value=''>كل التحصيل</option>{['كاش','فيزا','محفظة','أجل'].map(m=><option key={m}>{m}</option>)}
         </select>
         <select value={fType} onChange={e=>setFType(e.target.value)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}>
   <option value=''>كل الأنواع</option>
@@ -1532,7 +1336,7 @@ function OrderModal({ data, order, onClose, refetch }) {
         <Fld label="المنطقة" required><Sel value={f.zone} onChange={set('zone')} options={data.zones.map(z=>({v:z.name,l:z.name}))}/></Fld>
         <Fld label="القيمة (ج)" required><Inp type="number" value={f.value} onChange={set('value')} suffix="ج"/></Fld>
         <Fld label="نوع العميل"><Sel value={f.customer_type} onChange={set('customer_type')} options={[{v:'عميل',l:'👤 عميل'},{v:'دليفري',l:'🚚 دليفري'}]}/></Fld>
-        <Fld label="التحصيل"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','انستاباي','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
+        <Fld label="التحصيل"><Sel value={f.payment_method} onChange={set('payment_method')} options={['كاش','فيزا','محفظة','أجل'].map(v=>({v,l:`${PAY_ICONS[v]} ${v}`}))}/></Fld>
         {f.payment_method === 'أجل' && <Fld label="تاريخ الاستحقاق"><Inp type="date" value={f.due_date} onChange={set('due_date')}/></Fld>}
         <Fld label="الحالة"><Sel value={f.status} onChange={set('status')} options={ALL_STATUS.map(v=>({v,l:`${SC[v]?.icon||''} ${v}`}))}/></Fld>
         <Fld label="المندوب"><Sel value={f.driver_id||''} onChange={set('driver_id')} options={[{v:'',l:'بدون تعيين'}, ...data.drivers.map(d=>({v:d.id,l:`${d.name} (${d.zone})`}))]}/></Fld>
@@ -1836,7 +1640,7 @@ const delivOrders = orders.filter(isDeliveryOrder)
         </Card>
         <Card>
           <SectionTitle>💳 إيرادات بطريقة الدفع</SectionTitle>
-          {['كاش','فيزا','محفظة','انستاباي','أجل'].map(m => {
+          {['كاش','فيزا','محفظة','أجل'].map(m => {
             const rev = orders.filter(o=>o.payment_method===m&&o.status==='تم التسليم').reduce((s,o)=>s+parseFloat(o.value||0),0)
             return (
               <div key={m} style={{ marginBottom:12 }}>
@@ -2669,7 +2473,7 @@ const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.d
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14, marginBottom:14 }}>
         <Card>
           <SectionTitle>💳 توزيع التحصيل</SectionTitle>
-          {['كاش','فيزا','محفظة','انستاباي','أجل'].map(m => {
+          {['كاش','فيزا','محفظة','أجل'].map(m => {
             const cnt = orders.filter(o=>o.payment_method===m).length
             const cl  = PAY_C[m] || '#6b7280'
             return (
@@ -3609,12 +3413,11 @@ function DailyClosing({ data, refetch }) {
 
   const revenue = sumValues(delivered, 'value')
   const deliveryFees = sumValues(dayOrders, 'delivery_fee')
-  const cashTotal = sumValues(delivered.filter(o => o.payment_method === 'كاش'), 'value') 
-const visaTotal = sumValues(delivered.filter(o => o.payment_method === 'فيزا'), 'value')
-const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
-const instapayTotal = sumValues(delivered.filter(o => o.payment_method === 'انستاباي'), 'value')
-const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
-const externalTripsCost = sumValues(externalTrips, 'external_cost')
+  const cashTotal = sumValues(delivered.filter(o => o.payment_method === 'كاش'), 'value')
+  const visaTotal = sumValues(delivered.filter(o => o.payment_method === 'فيزا'), 'value')
+  const walletTotal = sumValues(delivered.filter(o => o.payment_method === 'محفظة'), 'value')
+  const creditTotal = sumValues(delivered.filter(o => o.payment_method === 'أجل'), 'value')
+  const externalTripsCost = sumValues(externalTrips, 'external_cost')
 
   const saveClosing = async () => {
     setSaving(true)
@@ -3634,7 +3437,6 @@ const externalTripsCost = sumValues(externalTrips, 'external_cost')
       cash_total: cashTotal,
       visa_total: visaTotal,
       wallet_total: walletTotal,
-      instapay_total: instapayTotal,
       credit_total: creditTotal,
       external_trips_count: externalTrips.length,
       external_trips_cost: externalTripsCost,
@@ -3675,7 +3477,6 @@ const externalTripsCost = sumValues(externalTrips, 'external_cost')
         ['كاش', cashTotal],
         ['فيزا', visaTotal],
         ['محفظة', walletTotal],
-        ['انستاباي', instapayTotal],
         ['أجل', creditTotal],
         ['مشاوير خارجية', externalTrips.length],
         ['تكلفة المشاوير الخارجية', externalTripsCost],
@@ -3763,7 +3564,6 @@ const externalTripsCost = sumValues(externalTrips, 'external_cost')
             ['كاش', cashTotal, '#10b981'],
             ['فيزا', visaTotal, '#3b82f6'],
             ['محفظة', walletTotal, '#a855f7'],
-            ['انستاباي', instapayTotal, '#14b8a6'],
             ['أجل', creditTotal, '#f59e0b'],
           ].map(([label, value, color]) => (
             <div key={label} style={{ marginBottom:10 }}>
@@ -3808,7 +3608,7 @@ const externalTripsCost = sumValues(externalTrips, 'external_cost')
       <Card>
         <SectionTitle>🗂 أرشيف التقفيل اليومي</SectionTitle>
         <Tbl
-          cols={['التاريخ','إجمالي الطلبات','تم التسليم','الإيراد','رسوم التوصيل','طلبات عملاء','طلبات دليفري','انستاباي','خارجي','ملاحظات']}
+          cols={['التاريخ','إجمالي الطلبات','تم التسليم','الإيراد','رسوم التوصيل','طلبات عملاء','طلبات دليفري','خارجي','ملاحظات']}
           rows={history.map(row => (
             <Tr key={row.id || row.report_date}>
               <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>
@@ -3819,7 +3619,7 @@ const externalTripsCost = sumValues(externalTrips, 'external_cost')
               <Td style={{ color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.revenue || 0)} ج</Td>
               <Td style={{ color:'#a855f7', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.delivery_fees || 0)} ج</Td>
               <Td style={{ color:'#67e8f9', fontFamily:"'JetBrains Mono',monospace" }}>{row.customer_orders || 0}</Td>
-              <Td style={{ color:'#14b8a6', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(row.instapay_total || 0)} ج</Td>
+              <Td style={{ color:'#d8b4fe', fontFamily:"'JetBrains Mono',monospace" }}>{row.delivery_orders || 0}</Td>
               <Td style={{ color:'#f97316', fontFamily:"'JetBrains Mono',monospace" }}>{row.external_trips_count || 0}</Td>
               <Td style={{ color:'rgba(255,255,255,.45)', fontSize:12 }}>{row.notes || '—'}</Td>
             </Tr>
@@ -3839,41 +3639,20 @@ export default function DeliverySystem() {
   const [time, setTime]   = useState(new Date())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [shortcuts, setShortcuts] = useState(false)
-  const [globalSearch, setGlobalSearch] = useState('')
-  const [globalOpen, setGlobalOpen] = useState(false)
 
   useEffect(() => { injectStyles() }, [])
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 15000); return () => clearInterval(t) }, [])
 
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
-      const tag = document.activeElement?.tagName
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setGlobalOpen(true)
-        return
-      }
-
-      if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(tag)) {
-        e.preventDefault()
-        setGlobalOpen(true)
-        return
-      }
-
       if (e.altKey) {
         const map = { h:'home', o:'orders', d:'drivers', z:'zones', a:'analytics', n:'notifs', r:'report', s:'settings' }
         if (map[e.key]) { e.preventDefault(); setPage(map[e.key]) }
         if (e.key === '?') setShortcuts(true)
       }
-
-      if (e.key === 'F5') {
-        e.preventDefault()
-        refetch()
-        toast.info('جاري التحديث...')
-      }
+      if (e.key === 'F5') { e.preventDefault(); refetch(); toast.info('جاري التحديث...') }
     }
-
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [refetch])
@@ -3887,207 +3666,6 @@ export default function DeliverySystem() {
   const allNav  = [...NAV, { id:'users', label:'المستخدمين', icon:'👥', group:'config' }]
   const props   = { data, refetch, user: DEFAULT_USER }
   const pc      = data.settings?.primaryColor || '#1a1d2e'
-
-  const globalResults = useMemo(() => {
-    const q = globalSearch.trim()
-    if (!q) return []
-
-    const driverStatusColor = (status) =>
-      status === 'شغال' ? '#10b981' : status === 'استراحة' ? '#f59e0b' : '#ef4444'
-
-    const tripStatusColor = (status) =>
-      status === 'نشطة' ? '#10b981' : status === 'مكتملة' ? '#6366f1' : status === 'معلقة' ? '#f59e0b' : '#ef4444'
-
-    const orderResults = smartFilter(data.orders, q, o => toSearchText(
-      o.id,
-      o.customer,
-      o.phone,
-      o.address,
-      o.zone,
-      o.status,
-      o.payment_method,
-      o.customer_type,
-      o.notes,
-      o.fail_reason,
-      o.cancel_reason,
-      o.return_reason,
-      data.drivers.find(d => d.id === o.driver_id)?.name || '',
-      parseProducts(o.products).map(p => `${p.name} ${p.qty} ${p.price}`).join(' '),
-      fmtDate(o.created_at),
-      fmtTime(o.created_at)
-    )).slice(0, 8).map(o => ({
-      key: `order-${o.id}`,
-      group: 'الطلبات',
-      page: 'orders',
-      icon: '📦',
-      title: `#${o.id} — ${o.customer}`,
-      subtitle: `${o.zone || 'بدون منطقة'} • ${o.status} • ${o.phone || 'بدون رقم'}`,
-      badge: o.customer_type || 'عميل',
-      color: SC[o.status]?.d || '#3b5bfe',
-    }))
-
-    const driverResults = smartFilter(data.drivers, q, d => toSearchText(
-      d.name,
-      d.phone,
-      d.zone,
-      d.status,
-      d.notes,
-      d.orders,
-      d.delivered,
-      d.rating,
-      d.earnings,
-      data.vehicles.find(v => v.id === d.vehicle_id)?.name || ''
-    )).slice(0, 6).map(d => ({
-      key: `driver-${d.id}`,
-      group: 'المندوبين',
-      page: 'drivers',
-      icon: '🏍',
-      title: d.name,
-      subtitle: `${d.zone || 'بدون منطقة'} • ${d.phone || 'بدون رقم'} • ${d.status}`,
-      badge: d.status || 'مندوب',
-      color: driverStatusColor(d.status),
-    }))
-
-    const zoneResults = smartFilter(data.zones, q, z => toSearchText(
-      z.name,
-      z.load,
-      z.avg_time,
-      z.max_capacity,
-      z.orders,
-      z.drivers,
-      z.pricing?.basePrice,
-      z.pricing?.discount,
-      z.pricing?.freeDeliveryFrom,
-      z.pricing?.slaMinutes
-    )).slice(0, 6).map(z => ({
-      key: `zone-${z.id}`,
-      group: 'المناطق',
-      page: 'zones',
-      icon: '🗺',
-      title: z.name,
-      subtitle: `${z.load || 'بدون حالة'} • SLA ${z.pricing?.slaMinutes || 40} دقيقة`,
-      badge: z.load || 'منطقة',
-      color: z.color || '#3b5bfe',
-    }))
-
-    const vehicleResults = smartFilter(data.vehicles, q, v => toSearchText(
-      v.name,
-      v.icon,
-      v.cost_per_km,
-      v.max_orders
-    )).slice(0, 6).map(v => ({
-      key: `vehicle-${v.id}`,
-      group: 'المركبات',
-      page: 'vehicles',
-      icon: v.icon || '🚗',
-      title: v.name,
-      subtitle: `تكلفة/كم ${v.cost_per_km || 0} ج • أقصى طلبات ${v.max_orders || 0}`,
-      badge: 'مركبة',
-      color: '#f97316',
-    }))
-
-    const tripResults = smartFilter(data.trips, q, t => toSearchText(
-      t.id,
-      t.wave,
-      t.status,
-      t.distance,
-      t.time_mins,
-      t.external_notes,
-      t.external_cost,
-      t.is_external ? 'خارجي' : 'عادي',
-      data.drivers.find(d => d.id === t.driver_id)?.name || '',
-      data.zones.find(z => z.id === t.zone_id)?.name || ''
-    )).slice(0, 6).map(t => {
-      const drv = data.drivers.find(d => d.id === t.driver_id)
-      const zone = data.zones.find(z => z.id === t.zone_id)
-      return {
-        key: `trip-${t.id}`,
-        group: 'الرحلات',
-        page: 'trips',
-        icon: t.is_external ? '🚗' : '🕐',
-        title: `رحلة #${t.id} — ${drv?.name || 'بدون مندوب'}`,
-        subtitle: `${zone?.name || 'بدون منطقة'} • ${t.wave || 'بدون موجة'} • ${t.status}`,
-        badge: t.is_external ? 'خارجي' : 'عادي',
-        color: tripStatusColor(t.status),
-      }
-    })
-
-    const userResults = smartFilter(data.users, q, u => toSearchText(
-      u.name,
-      u.username,
-      u.role,
-      u.active ? 'نشط' : 'موقوف'
-    )).slice(0, 6).map(u => ({
-      key: `user-${u.id}`,
-      group: 'المستخدمين',
-      page: 'users',
-      icon: '👥',
-      title: u.name,
-      subtitle: `${u.username} • ${ROLES[u.role]?.label || u.role} • ${u.active ? 'نشط' : 'موقوف'}`,
-      badge: ROLES[u.role]?.label || u.role,
-      color: ROLES[u.role]?.color || '#6b7280',
-    }))
-
-    const shiftResults = smartFilter(data.shifts, q, s => toSearchText(
-      s.date,
-      s.shift_type,
-      s.status,
-      s.notes,
-      s.orders_count,
-      s.delivered_count,
-      s.revenue,
-      fmtDate(s.date),
-      fmtTime(s.opened_at),
-      fmtTime(s.closed_at)
-    )).slice(0, 6).map(s => ({
-      key: `shift-${s.id}`,
-      group: 'الشفتات',
-      page: 'shifts',
-      icon: s.shift_type === 'صباحي' ? '☀️' : '🌙',
-      title: `${s.shift_type} — ${fmtDate(s.date)}`,
-      subtitle: `${s.status === 'open' ? 'مفتوح' : 'مغلق'} • ${fmt(s.revenue || 0)} ج`,
-      badge: s.status === 'open' ? 'مفتوح' : 'مغلق',
-      color: s.status === 'open' ? '#10b981' : '#6b7280',
-    }))
-
-    const closingResults = smartFilter(data.dailyClosings || [], q, r => toSearchText(
-      r.report_date,
-      r.notes,
-      r.total_orders,
-      r.delivered_orders,
-      r.revenue,
-      r.customer_orders,
-      r.delivery_orders,
-      r.external_trips_count,
-      fmtDate(r.report_date)
-    )).slice(0, 6).map(r => ({
-      key: `closing-${r.id || r.report_date}`,
-      group: 'التقفيل اليومي',
-      page: 'daily_close',
-      icon: '🧾',
-      title: `تقفيل ${fmtDate(r.report_date)}`,
-      subtitle: `${r.total_orders || 0} طلب • ${fmt(r.revenue || 0)} ج`,
-      badge: 'تقفيل',
-      color: '#10b981',
-    }))
-
-    return [
-      ...orderResults,
-      ...driverResults,
-      ...zoneResults,
-      ...vehicleResults,
-      ...tripResults,
-      ...userResults,
-      ...shiftResults,
-      ...closingResults,
-    ].slice(0, 40)
-  }, [globalSearch, data])
-
-  const handlePickGlobalResult = useCallback((item) => {
-    setPage(item.page)
-    setGlobalOpen(false)
-    setGlobalSearch('')
-  }, [])
 
   const renderPage = () => {
     switch (page) {
@@ -4118,20 +3696,8 @@ export default function DeliverySystem() {
   ]
 
   return (
-      <ToastProvider>
+    <ToastProvider>
       {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)}/>}
-      {globalOpen && (
-        <GlobalSearchModal
-          value={globalSearch}
-          onChange={setGlobalSearch}
-          results={globalResults}
-          onPick={handlePickGlobalResult}
-          onClose={() => {
-            setGlobalOpen(false)
-            setGlobalSearch('')
-          }}
-        />
-      )}
       <div style={{ display:'flex', height:'100vh', overflow:'hidden', direction:'rtl', fontFamily:"'Cairo',Tahoma,sans-serif", background:'#0a0a0f' }}>
 
         {/* ── SIDEBAR ── */}
@@ -4221,32 +3787,9 @@ export default function DeliverySystem() {
               )}
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <button
-                onClick={() => setGlobalOpen(true)}
-                style={{
-                  background:'rgba(255,255,255,.05)',
-                  border:'1px solid rgba(255,255,255,.08)',
-                  borderRadius:10,
-                  padding:'6px 10px',
-                  color:'rgba(255,255,255,.7)',
-                  cursor:'pointer',
-                  fontFamily:'inherit',
-                  fontSize:12,
-                  display:'flex',
-                  alignItems:'center',
-                  gap:8
-                }}
-              >
-                <span>🔎 بحث ذكي</span>
-                <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontFamily:"'JetBrains Mono',monospace" }}>
-                  Ctrl+K
-                </span>
-              </button>
-
               <span style={{ fontSize:15, fontWeight:800, color:'white' }}>
                 {allNav.find(n => n.id === page)?.icon} {allNav.find(n => n.id === page)?.label}
               </span>
-
               <RefreshBar lastUpdate={lastUpdate} onRefresh={refetch}/>
             </div>
           </div>
