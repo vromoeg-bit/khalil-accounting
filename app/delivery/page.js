@@ -3368,275 +3368,223 @@ const overdue    = orders.filter(o=>o.payment_method==='أجل'&&o.due_date&&o.d
 //  TREASURY PAGE
 // ══════════════════════════════════════════════════════
 function Treasury({ data }) {
-  const [selectedDate, setSelectedDate] = useState(toDayKey(new Date()))
+  const treasuryDate = useMemo(() => {
+    return data?.selectedTreasuryDate || new Date();
+  }, [data?.selectedTreasuryDate]);
 
-  const dayCollections = useMemo(
-    () => (data.orders || []).filter(o =>
-      o.collection_date === selectedDate && toNum(o.collection_amount) > 0
-    ),
-    [data.orders, selectedDate]
-  )
+  const isSameDay = (a, b) => {
+    if (!a || !b) return false;
+    const d1 = new Date(a);
+    const d2 = new Date(b);
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  };
 
-  const getCreditPart = (o) => {
-    const collected = toNum(o.collection_amount)
-    const orderValue = toNum(o.value)
-    const previousBalance = toNum(o.previous_balance)
+  const getCollectionDate = (o) =>
+    o.collection_date ||
+    o.updated_at ||
+    o.delivered_at ||
+    o.created_at;
 
-    if (collected <= 0) return 0
+  const dayCollections = useMemo(() => {
+    return (data?.orders || []).filter((o) => {
+      const amount = toNum(o.collection_amount);
+      if (amount <= 0) return false;
+      return isSameDay(getCollectionDate(o), treasuryDate);
+    });
+  }, [data?.orders, treasuryDate]);
 
-    // لو الأوردر نفسه أجل، يبقى التحصيل كله يروح لعملاء الأجل
-    if (o.payment_method === 'أجل') {
-      return previousBalance > 0
-        ? Math.min(collected, previousBalance)
-        : collected
-    }
+  const totalCollectedToday = useMemo(() => {
+    return dayCollections.reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-    // لو الدفع كاش/فيزا/محفظة:
-    // بنعتبر إن قيمة الأوردر الحالي تخص الشيفت،
-    // وأي زيادة فوق قيمة الأوردر تعتبر سداد من الرصيد القديم
-    const extraOverOrder = Math.max(collected - orderValue, 0)
+  // 1) عملاء الأجل: معلومة مستقلة
+  const creditCollectedToday = useMemo(() => {
+    return dayCollections
+      .filter((o) => o.customer_type === 'عميل')
+      .reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-    if (previousBalance > 0) {
-      return Math.min(extraOverOrder, previousBalance)
-    }
+  // 2) الطيارين: معلومة مستقلة أيضًا، بدون استبعاد العملاء
+  const morningPilot = useMemo(() => {
+    return dayCollections
+      .filter((o) => (o.collection_shift_type || '').trim() === 'صباحي')
+      .reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-    return 0
-  }
+  const eveningPilot = useMemo(() => {
+    return dayCollections
+      .filter((o) => (o.collection_shift_type || '').trim() === 'مسائي')
+      .reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-  const getOpsPart = (o) => Math.max(toNum(o.collection_amount) - getCreditPart(o), 0)
+  const walletPilot = useMemo(() => {
+    return dayCollections
+      .filter((o) => {
+        const shift = (o.collection_shift_type || '').trim();
+        return shift === 'محفظة' || shift === 'محفظه';
+      })
+      .reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-  const getOpsBucket = (o) => {
-    if (['فيزا', 'محفظة'].includes(o.payment_method)) return 'طيار محفظة'
-    if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') return 'طيار صباحي'
-    if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') return 'طيار مسائي'
-    if (o.payment_method === 'كاش' && !o.collection_shift_type) return 'كاش بدون شفت'
-    return '—'
-  }
+  const uncategorizedCollections = useMemo(() => {
+    return dayCollections
+      .filter((o) => {
+        const shift = (o.collection_shift_type || '').trim();
+        return !['صباحي', 'مسائي', 'محفظة', 'محفظه'].includes(shift);
+      })
+      .reduce((s, o) => s + toNum(o.collection_amount), 0);
+  }, [dayCollections]);
 
-  const creditCustomers = useMemo(
-    () => (data.customers || []).filter(c => toNum(c.current_balance) > 0),
-    [data.customers]
-  )
+  // إجمالي فعلي بدون ازدواج
+  const totalTreasury = totalCollectedToday;
 
-  const creditCollectedToday = dayCollections.reduce((s, o) => s + getCreditPart(o), 0)
+  // العملاء اللي لسه عليهم رصيد
+  const creditRemaining = useMemo(() => {
+    return (data?.customers || [])
+      .filter((c) => toNum(c.current_balance) > 0)
+      .reduce((s, c) => s + toNum(c.current_balance), 0);
+  }, [data?.customers]);
 
-  const morningPilot = dayCollections.reduce((s, o) => {
-    if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') {
-      return s + getOpsPart(o)
-    }
-    return s
-  }, 0)
+  const rows = useMemo(() => {
+    return dayCollections.map((o, idx) => {
+      const isCreditCustomer = o.customer_type === 'عميل';
 
-  const eveningPilot = dayCollections.reduce((s, o) => {
-    if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') {
-      return s + getOpsPart(o)
-    }
-    return s
-  }, 0)
+      let opsBucket = '—';
+      const shift = (o.collection_shift_type || '').trim();
 
-  const walletPilot = dayCollections.reduce((s, o) => {
-    if (['فيزا', 'محفظة'].includes(o.payment_method)) {
-      return s + getOpsPart(o)
-    }
-    return s
-  }, 0)
+      if (shift === 'صباحي') opsBucket = 'طيار صباحي';
+      else if (shift === 'مسائي') opsBucket = 'طيار مسائي';
+      else if (shift === 'محفظة' || shift === 'محفظه') opsBucket = 'طيار محفظة';
 
-  const uncategorizedCash = dayCollections.reduce((s, o) => {
-    if (o.payment_method === 'كاش' && !o.collection_shift_type) {
-      return s + getOpsPart(o)
-    }
-    return s
-  }, 0)
-
-  const creditRemaining = creditCustomers.reduce(
-    (s, c) => s + Math.max(toNum(c.current_balance), 0),
-    0
-  )
-
-  const totalTreasury = creditCollectedToday + morningPilot + eveningPilot + walletPilot
-  const totalCollectedToday = sumValues(dayCollections, 'collection_amount')
-
-  const treasuryRows = dayCollections.map(o => {
-    const creditPart = getCreditPart(o)
-    const opsPart = getOpsPart(o)
-    const opsBucket = getOpsBucket(o)
-
-    let bucket = 'عملاء أجل'
-    let bucketColor = '#f59e0b'
-
-    if (creditPart > 0 && opsPart > 0) {
-      bucket = `أجل + ${opsBucket}`
-      bucketColor = '#a855f7'
-    } else if (creditPart > 0) {
-      bucket = 'عملاء أجل'
-      bucketColor = '#f59e0b'
-    } else if (opsBucket === 'طيار صباحي') {
-      bucket = 'طيار صباحي'
-      bucketColor = '#10b981'
-    } else if (opsBucket === 'طيار مسائي') {
-      bucket = 'طيار مسائي'
-      bucketColor = '#3b5bfe'
-    } else if (opsBucket === 'طيار محفظة') {
-      bucket = 'طيار محفظة'
-      bucketColor = '#a855f7'
-    } else {
-      bucket = 'كاش بدون شفت'
-      bucketColor = '#ef4444'
-    }
-
-    return { ...o, creditPart, opsPart, bucket, bucketColor }
-  })
+      return {
+        ...o,
+        idx: idx + 1,
+        isCreditCustomer,
+        opsBucket,
+      };
+    });
+  }, [dayCollections]);
 
   return (
-    <div className="page-enter">
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
-        <Kpi label="📅 تاريخ الخزنة" value={selectedDate} color="#3b5bfe"/>
-        <Kpi label="💰 إجمالي المحصل اليوم" value={fmt(totalCollectedToday)} color="#10b981" sub="جنيه"/>
-        <Kpi label="🏦 إجمالي الخزنة المصنفة" value={fmt(totalTreasury)} color="#ca8a04" sub="جنيه"/>
-        <Kpi label="📒 متبقي عملاء الأجل" value={fmt(creditRemaining)} color="#f59e0b" sub="جنيه"/>
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">إجمالي التحصيل الحقيقي</div>
+          <div className="text-2xl font-bold text-slate-900">{fmtMoney(totalTreasury)}</div>
+          <div className="text-xs text-slate-400 mt-1">بدون تكرار</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">عملاء الأجل — المحصل</div>
+          <div className="text-2xl font-bold text-amber-600">{fmtMoney(creditCollectedToday)}</div>
+          <div className="text-xs text-slate-400 mt-1">معلومة مستقلة</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">طيار صباحي</div>
+          <div className="text-2xl font-bold text-sky-600">{fmtMoney(morningPilot)}</div>
+          <div className="text-xs text-slate-400 mt-1">معلومة مستقلة</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">طيار مسائي</div>
+          <div className="text-2xl font-bold text-violet-600">{fmtMoney(eveningPilot)}</div>
+          <div className="text-xs text-slate-400 mt-1">معلومة مستقلة</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">طيار محفظة</div>
+          <div className="text-2xl font-bold text-emerald-600">{fmtMoney(walletPilot)}</div>
+          <div className="text-xs text-slate-400 mt-1">معلومة مستقلة</div>
+        </div>
       </div>
 
-      <Card neon>
-        <SectionTitle>🏦 الخزنة اليومية</SectionTitle>
-
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, marginBottom:14 }}>
-          <Fld label="اختر اليوم">
-            <Inp type="date" value={selectedDate} onChange={setSelectedDate}/>
-          </Fld>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">المتبقي على العملاء</div>
+          <div className="text-2xl font-bold text-rose-600">{fmtMoney(creditRemaining)}</div>
         </div>
 
-        <div style={{ background:'rgba(59,91,254,.08)', border:'1px solid rgba(59,91,254,.2)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#93c5fd', fontWeight:700 }}>
-          دلوقتي الخزنة بتفصل تلقائيًا بين سداد الدين القديم وبين تحصيل الأوردر الحالي.
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-500 mb-1">تحصيل غير مصنف</div>
+          <div className="text-2xl font-bold text-slate-700">{fmtMoney(uncategorizedCollections)}</div>
         </div>
+      </div>
 
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-          <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.2)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>عملاء الأجل — المحصل</div>
-            <div style={{ fontSize:22, fontWeight:900, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>
-              {fmt(creditCollectedToday)} ج
-            </div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              المتبقي عليهم: {fmt(creditRemaining)} ج
-            </div>
-          </div>
+      <div className="rounded-2xl border bg-amber-50 text-amber-900 px-4 py-3 text-sm">
+        ملاحظة: كروت "عملاء الأجل" و"الطيار" معلوماتية فقط، وقد يظهر نفس التحصيل في أكثر من كارت، لكن "إجمالي التحصيل الحقيقي" لا يكرر المبلغ.
+      </div>
 
-          <div style={{ background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.2)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار صباحي</div>
-            <div style={{ fontSize:22, fontWeight:900, color:'#6ee7b7', fontFamily:"'JetBrains Mono',monospace" }}>
-              {fmt(morningPilot)} ج
-            </div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              بعد خصم جزء الأجل تلقائيًا
-            </div>
-          </div>
+      <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+        <div className="p-4 border-b font-bold">تفاصيل التحصيل اليومي</div>
 
-          <div style={{ background:'rgba(59,130,246,.08)', border:'1px solid rgba(59,130,246,.2)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار مسائي</div>
-            <div style={{ fontSize:22, fontWeight:900, color:'#93c5fd', fontFamily:"'JetBrains Mono',monospace" }}>
-              {fmt(eveningPilot)} ج
-            </div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              بعد خصم جزء الأجل تلقائيًا
-            </div>
-          </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr className="text-right">
+                <th className="px-3 py-2">#</th>
+                <th className="px-3 py-2">العميل</th>
+                <th className="px-3 py-2">طريقة الدفع</th>
+                <th className="px-3 py-2">مبلغ التحصيل</th>
+                <th className="px-3 py-2">شفت التحصيل</th>
+                <th className="px-3 py-2">عملاء الأجل</th>
+                <th className="px-3 py-2">جهة التحصيل</th>
+                <th className="px-3 py-2">الرصيد بعد الحركة</th>
+              </tr>
+            </thead>
 
-          <div style={{ background:'rgba(168,85,247,.08)', border:'1px solid rgba(168,85,247,.2)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>طيار محفظة</div>
-            <div style={{ fontSize:22, fontWeight:900, color:'#d8b4fe', fontFamily:"'JetBrains Mono',monospace" }}>
-              {fmt(walletPilot)} ج
-            </div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              فيزا + محفظة بعد خصم جزء الأجل
-            </div>
-          </div>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t">
+                  <td className="px-3 py-2">{row.idx}</td>
+                  <td className="px-3 py-2">{row.customer || row.customer_name || '—'}</td>
+                  <td className="px-3 py-2">{row.payment_method || '—'}</td>
+                  <td className="px-3 py-2 font-semibold">{fmtMoney(toNum(row.collection_amount))}</td>
+                  <td className="px-3 py-2">{row.collection_shift_type || '—'}</td>
+
+                  <td className="px-3 py-2">
+                    {row.isCreditCustomer ? (
+                      <span className="inline-flex rounded-full bg-amber-100 text-amber-700 px-2 py-1 text-xs font-medium">
+                        عملاء أجل
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+
+                  <td className="px-3 py-2">
+                    {row.opsBucket !== '—' ? (
+                      <span className="inline-flex rounded-full bg-sky-100 text-sky-700 px-2 py-1 text-xs font-medium">
+                        {row.opsBucket}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+
+                  <td className="px-3 py-2">
+                    {fmtMoney(toNum(row.balance_after ?? row.current_balance ?? 0))}
+                  </td>
+                </tr>
+              ))}
+
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="px-3 py-6 text-center text-slate-500">
+                    لا توجد تحصيلات في هذا اليوم
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-
-        {uncategorizedCash > 0 && (
-          <div style={{ marginTop:14, background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:12, padding:'12px 16px', color:'#fca5a5', fontSize:13, fontWeight:700 }}>
-            ⚠️ يوجد جزء تحصيل تشغيلي بدون شفت = {fmt(uncategorizedCash)} ج
-          </div>
-        )}
-      </Card>
-
-      <Card>
-        <SectionTitle>📋 تفاصيل التحصيل لليوم</SectionTitle>
-        <Tbl cols={['#','العميل','طريقة الدفع','إجمالي التحصيل','جزء الأجل','جزء الطيار','شفت التحصيل','تصنيف الخزنة','الرصيد بعد الحركة']} rows={
-          treasuryRows.map(o => (
-            <Tr key={o.id}>
-              <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>#{o.id}</Td>
-
-              <Td style={{ fontWeight:700, color:'white' }}>{o.customer}</Td>
-
-              <Td>
-                <span style={{
-                  fontSize:11,
-                  fontWeight:700,
-                  padding:'3px 8px',
-                  borderRadius:7,
-                  background:'rgba(255,255,255,.06)',
-                  color:PAY_C[o.payment_method] || 'white'
-                }}>
-                  {PAY_ICONS[o.payment_method]} {o.payment_method}
-                </span>
-              </Td>
-
-              <Td style={{ fontWeight:800, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(o.collection_amount || 0)} ج
-              </Td>
-
-              <Td style={{ fontWeight:800, color:'#f59e0b', fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(o.creditPart || 0)} ج
-              </Td>
-
-              <Td style={{ fontWeight:800, color:'#3b82f6', fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(o.opsPart || 0)} ج
-              </Td>
-
-              <Td style={{ color:'rgba(255,255,255,.55)' }}>{o.collection_shift_type || '—'}</Td>
-
-              <Td>
-                <span style={{
-                  fontSize:11,
-                  fontWeight:700,
-                  padding:'3px 8px',
-                  borderRadius:7,
-                  background:o.bucketColor + '22',
-                  color:o.bucketColor
-                }}>
-                  {o.bucket}
-                </span>
-              </Td>
-
-              <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(o.balance_after || 0)} ج
-              </Td>
-            </Tr>
-          ))
-        }/>
-      </Card>
-
-      <Card>
-        <SectionTitle>📒 رصيد عملاء الأجل الحالي</SectionTitle>
-        <Tbl cols={['العميل','التليفون','إجمالي الأوردرات','إجمالي التحصيل','الرصيد الحالي']} rows={
-          creditCustomers.map(c => (
-            <Tr key={c.id}>
-              <Td style={{ fontWeight:800, color:'white' }}>{c.name}</Td>
-              <Td style={{ color:'rgba(255,255,255,.5)' }}>{c.phone || '—'}</Td>
-              <Td style={{ color:'#7b9fff', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(c.total_orders_value || 0)} ج
-              </Td>
-              <Td style={{ color:'#10b981', fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(c.total_collected || 0)} ج
-              </Td>
-              <Td style={{ color:'#f59e0b', fontWeight:900, fontFamily:"'JetBrains Mono',monospace" }}>
-                {fmt(c.current_balance || 0)} ج
-              </Td>
-            </Tr>
-          ))
-        }/>
-      </Card>
+      </div>
     </div>
-  )
+  );
 }
 
 // ══════════════════════════════════════════════════════
