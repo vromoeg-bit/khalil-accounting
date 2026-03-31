@@ -2547,8 +2547,9 @@ function VehicleForm({ veh, onClose, refetch }) {
 //  TRIPS
 // ══════════════════════════════════════════════════════
 function Trips({ data, refetch }) {
-  const [modal, setModal] = useState(null)
+   const [modal, setModal] = useState(null)
   const [conf, setConf] = useState(null)
+  const [tripFilter, setTripFilter] = useState('all')
 
   const { trips } = data
   const TRIP_SC = { نشطة:'#10b981', مكتملة:'#6366f1', ملغية:'#ef4444', معلقة:'#f59e0b' }
@@ -3447,7 +3448,6 @@ function Settings({ data, refetch }) {
 // ══════════════════════════════════════════════════════
 function Users({ data, refetch, currentUser }) {
   const [modal, setModal] = useState(null); const [conf, setConf] = useState(null)
-  const [tripFilter, setTripFilter] = useState('all')
   const { users } = data
   const toggleActive = async (u) => {
     if (u.id === currentUser.id) return
