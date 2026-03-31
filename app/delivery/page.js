@@ -108,10 +108,20 @@ const PERMS = {
   dispatcher: ['orders_r','orders_w','drivers_r','zones_r','trips_r','trips_w'],
   viewer:     ['orders_r','drivers_r','zones_r','trips_r','reports'],
 }
+const FEEDBACK_TYPES = ['شكوى','اقتراح']
+const FEEDBACK_STATUS = ['جديد','قيد المراجعة','تم الحل','مغلق']
+
+const FEEDBACK_SC = {
+  'جديد':         { bg:'rgba(239,68,68,.15)',  c:'#fca5a5', d:'#ef4444', icon:'🆕' },
+  'قيد المراجعة': { bg:'rgba(245,158,11,.15)', c:'#fcd34d', d:'#f59e0b', icon:'🕐' },
+  'تم الحل':      { bg:'rgba(16,185,129,.15)', c:'#6ee7b7', d:'#10b981', icon:'✅' },
+  'مغلق':         { bg:'rgba(107,114,128,.15)', c:'#d1d5db', d:'#9ca3af', icon:'📁' },
+}
 const NAV = [
   { id:'home',      label:'الرئيسية',    icon:'🏠', group:'main' },
   { id:'orders',    label:'الطلبات',     icon:'📦', group:'main' },
   { id:'customers', label:'العملاء',     icon:'👥', group:'main' },
+  { id:'complaints', label:'الشكاوي و المقترحات', icon:'📝', group:'main' },
   { id:'analytics', label:'التحليلات',   icon:'📈', group:'main' },
   { id:'prep',      label:'التحضير',     icon:'🍳', group:'ops' },
   { id:'tracking',  label:'تتبع الدليفري',icon:'📍', group:'ops' },
@@ -265,6 +275,44 @@ const exportCSV = (rows, cols, filename) => {
   URL.revokeObjectURL(url)
 }
 
+const uploadComplaintImage = async (file) => {
+  if (!file) return { publicUrl:null, path:null, error:null }
+
+  const allowed = ['image/jpeg', 'image/png']
+  if (!allowed.includes(file.type)) {
+    return { publicUrl:null, path:null, error:'الملف لازم يكون JPG أو PNG فقط' }
+  }
+
+  const maxSize = 5 * 1024 * 1024
+  if (file.size > maxSize) {
+    return { publicUrl:null, path:null, error:'حجم الصورة لازم يكون أقل من 5MB' }
+  }
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+  const filePath = `complaints/${fileName}`
+
+  const up = await supabase.storage
+    .from('complaints')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type,
+    })
+
+  if (up.error) {
+    return { publicUrl:null, path:null, error:up.error.message }
+  }
+
+  const { data } = supabase.storage.from('complaints').getPublicUrl(filePath)
+
+  return {
+    publicUrl: data?.publicUrl || null,
+    path: filePath,
+    error: null,
+  }
+}
+
 // ══════════════════════════════════════════════════════
 //  SMART SEARCH UTILITIES
 // ══════════════════════════════════════════════════════
@@ -378,6 +426,31 @@ const buildSmartSearchResults = (data, query) => {
       title: c.name,
       subtitle: `${c.phone || 'بدون رقم'} • ${c.customer_type || 'عميل'}`,
       meta: `رصيد ${fmt(c.current_balance || 0)} ج`,
+      score,
+    })
+  }
+})
+;(data.complaints || []).forEach(c => {
+  const score = weightedSearchScore(q, [
+    { value: c.customer_name, weight: 8 },
+    { value: c.phone, weight: 6 },
+    { value: c.type, weight: 6 },
+    { value: c.status, weight: 6 },
+    { value: c.title, weight: 8 },
+    { value: c.details, weight: 5 },
+    { value: c.notes, weight: 2 },
+  ])
+
+  if (score > 0) {
+    results.push({
+      id: `complaint-${c.id}`,
+      type: 'complaints',
+      typeLabel: 'شكوى/اقتراح',
+      page: 'complaints',
+      icon: c.type === 'اقتراح' ? '💡' : '📝',
+      title: `${c.type} — ${c.customer_name}`,
+      subtitle: `${c.title} • ${c.status} • ${c.phone || 'بدون رقم'}`,
+      meta: fmtDate(c.created_at),
       score,
     })
   }
@@ -695,6 +768,36 @@ const Badge = ({ s }) => {
   )
 }
 
+const FeedbackBadge = ({ status }) => {
+  const sc = FEEDBACK_SC[status] || {
+    bg:'rgba(107,114,128,.15)',
+    c:'#d1d5db',
+    d:'#9ca3af',
+    icon:'●'
+  }
+
+  return (
+    <span
+      style={{
+        display:'inline-flex',
+        alignItems:'center',
+        gap:4,
+        padding:'3px 10px',
+        borderRadius:20,
+        background:sc.bg,
+        color:sc.c,
+        fontSize:11,
+        fontWeight:700,
+        border:`1px solid ${sc.d}30`,
+        whiteSpace:'nowrap'
+      }}
+    >
+      <span style={{ fontSize:9 }}>{sc.icon}</span>
+      {status}
+    </span>
+  )
+}
+
 const Btn = ({ children, onClick, color, small, style: sx = {}, disabled, loading, title }) => {
   const [h, sH] = useState(false)
   color = color || '#3b5bfe'
@@ -979,6 +1082,7 @@ function useData() {
   const [data, setData] = useState({
   orders:[],
   customers:[],
+  complaints:[],
   drivers:[],
   zones:[],
   vehicles:[],
@@ -997,10 +1101,11 @@ function useData() {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
 
-    const [ord, cus, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
+    const [ord, cus, cmp, drv, zon, veh, trp, usr, set, shf, dcl] = await Promise.all([
   supabase.from('delivery_orders').select('*').order('created_at', { ascending:false }),
   supabase.from('delivery_customers').select('*').order('updated_at', { ascending:false }),
-  supabase.from('delivery_drivers').select('*'),
+supabase.from('delivery_feedback').select('*').order('created_at', { ascending:false }),
+supabase.from('delivery_drivers').select('*'),
   supabase.from('delivery_zones').select('*'),
   supabase.from('delivery_vehicles').select('*'),
   supabase.from('delivery_trips').select('*').order('created_at', { ascending:false }),
@@ -1010,10 +1115,11 @@ function useData() {
   supabase.from('delivery_daily_closings').select('*').order('report_date', { ascending:false }),
 ])
 
-    if (ord.error || cus.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
+    if (ord.error || cus.error || cmp.error || drv.error || zon.error || veh.error || trp.error || usr.error || set.error || shf.error || dcl.error) {
       console.error('Supabase error:', {
   ord: ord.error,
   cus: cus.error,
+  cmp: cmp.error,
   drv: drv.error,
   zon: zon.error,
   veh: veh.error,
@@ -1029,6 +1135,7 @@ function useData() {
      setData({
   orders: ord.data || [],
   customers: cus.data || [],
+  complaints: cmp.data || [],
   drivers: drv.data || [],
   zones: zon.data || [],
   vehicles: veh.data || [],
@@ -3730,6 +3837,678 @@ function Customers({ data }) {
   )
 }
 
+function ComplaintsPage({ data, refetch }) {
+  const [srch, setSrch] = useState('')
+  const [fType, setFType] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [modal, setModal] = useState(null)
+  const [conf, setConf] = useState(null)
+
+  const complaints = data.complaints || []
+
+  const list = useMemo(() => {
+    const base = complaints.filter(c =>
+      (!fType || c.type === fType) &&
+      (!fStatus || c.status === fStatus)
+    )
+
+    if (!srch.trim()) return base
+
+    return base
+      .map(c => ({
+        c,
+        score: weightedSearchScore(srch, [
+          { value: c.customer_name, weight: 8 },
+          { value: c.phone, weight: 6 },
+          { value: c.type, weight: 6 },
+          { value: c.status, weight: 6 },
+          { value: c.title, weight: 8 },
+          { value: c.details, weight: 5 },
+          { value: c.notes, weight: 2 },
+        ])
+      }))
+      .filter(x => x.score > 0)
+      .sort((a,b) => b.score - a.score)
+      .map(x => x.c)
+  }, [complaints, srch, fType, fStatus])
+
+  const updateStatus = async (id, status) => {
+    const { error } = await supabase
+      .from('delivery_feedback')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+
+    if (error) {
+      toast.error('حصل خطأ: ' + error.message)
+      return
+    }
+
+    toast.success('تم تحديث الحالة')
+    refetch()
+  }
+
+  const deleteComplaint = async (item) => {
+    if (item.image_path) {
+      await supabase.storage.from('complaints').remove([item.image_path])
+    }
+
+    const { error } = await supabase
+      .from('delivery_feedback')
+      .delete()
+      .eq('id', item.id)
+
+    if (error) {
+      toast.error('حصل خطأ: ' + error.message)
+      return
+    }
+
+    setConf(null)
+    toast.success('تم حذف السجل')
+    refetch()
+  }
+
+  const exportComplaints = () => {
+    exportCSV(
+      list.map(c => [
+        c.id,
+        c.customer_name,
+        c.phone || '',
+        c.customer_type || '',
+        c.type,
+        c.title,
+        c.details,
+        c.status,
+        c.image_url || '',
+        fmtDate(c.created_at)
+      ]),
+      ['#','العميل','التليفون','نوع العميل','النوع','العنوان','التفاصيل','الحالة','الصورة','التاريخ'],
+      `complaints_${new Date().toISOString().slice(0,10)}.csv`
+    )
+    toast.success('تم تصدير الشكاوي و المقترحات')
+  }
+
+  return (
+    <div className="page-enter">
+      {conf && <Confirm msg={conf.msg} onOk={conf.ok} onCancel={() => setConf(null)}/>}
+      {modal && (
+        <ComplaintModal
+          data={data}
+          complaint={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          refetch={refetch}
+        />
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="📝 إجمالي السجلات" value={complaints.length} color="#3b5bfe"/>
+        <Kpi label="🆕 جديد" value={complaints.filter(c => c.status === 'جديد').length} color="#ef4444"/>
+        <Kpi label="🕐 قيد المراجعة" value={complaints.filter(c => c.status === 'قيد المراجعة').length} color="#f59e0b"/>
+        <Kpi label="✅ تم الحل" value={complaints.filter(c => c.status === 'تم الحل').length} color="#10b981"/>
+        <Kpi label="💡 اقتراحات" value={complaints.filter(c => c.type === 'اقتراح').length} color="#a855f7"/>
+        <Kpi label="⚠ شكاوي" value={complaints.filter(c => c.type === 'شكوى').length} color="#06b6d4"/>
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:12, background:'rgba(255,255,255,.03)', padding:'10px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,.06)' }}>
+        <Btn onClick={() => setModal('new')} color="#3b5bfe">➕ إضافة شكوى / اقتراح</Btn>
+        <Btn onClick={exportComplaints} color="#10b981" small>📥 CSV</Btn>
+
+        <Inp
+          value={srch}
+          onChange={setSrch}
+          placeholder="🔍 بحث: اسم العميل / الرقم / العنوان / التفاصيل..."
+          style={{ width:300, padding:'6px 11px', fontSize:12 }}
+        />
+
+        <select
+          value={fType}
+          onChange={e => setFType(e.target.value)}
+          style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}
+        >
+          <option value=''>كل الأنواع</option>
+          {FEEDBACK_TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+
+        <select
+          value={fStatus}
+          onChange={e => setFStatus(e.target.value)}
+          style={{ padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', fontSize:12, fontFamily:'inherit', direction:'rtl', background:'#0d1018', color:'white' }}
+        >
+          <option value=''>كل الحالات</option>
+          {FEEDBACK_STATUS.map(s => <option key={s}>{s}</option>)}
+        </select>
+
+        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginRight:'auto' }}>{list.length} نتيجة</span>
+      </div>
+
+      <Card>
+        <Tbl cols={['#','العميل','النوع','العنوان','الحالة','الصورة','التاريخ','إجراء']} rows={
+          list.map(item => (
+            <Tr key={item.id}>
+              <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>#{item.id}</Td>
+
+              <Td>
+                <div>
+                  <div style={{ fontWeight:800, color:'white', fontSize:13 }}>{item.customer_name}</div>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>
+                    {item.phone || 'بدون رقم'} {item.customer_type ? `• ${item.customer_type}` : ''}
+                  </div>
+                </div>
+              </Td>
+
+              <Td>
+                <span
+                  style={{
+                    fontSize:11,
+                    fontWeight:700,
+                    padding:'3px 8px',
+                    borderRadius:8,
+                    background:item.type === 'اقتراح' ? 'rgba(168,85,247,.15)' : 'rgba(6,182,212,.15)',
+                    color:item.type === 'اقتراح' ? '#d8b4fe' : '#67e8f9'
+                  }}
+                >
+                  {item.type === 'اقتراح' ? '💡 اقتراح' : '📝 شكوى'}
+                </span>
+              </Td>
+
+              <Td>
+                <div style={{ maxWidth:280 }}>
+                  <div style={{ fontWeight:700, color:'white', fontSize:12 }}>{item.title}</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:3 }}>
+                    {String(item.details || '').slice(0, 80)}
+                    {String(item.details || '').length > 80 ? '...' : ''}
+                  </div>
+                </div>
+              </Td>
+
+              <Td>
+                <select
+                  value={item.status}
+                  onChange={e => updateStatus(item.id, e.target.value)}
+                  style={{
+                    fontSize:11,
+                    padding:'3px 7px',
+                    borderRadius:7,
+                    border:'none',
+                    background:(FEEDBACK_SC[item.status]?.bg) || 'rgba(255,255,255,.07)',
+                    color:(FEEDBACK_SC[item.status]?.c) || 'white',
+                    fontFamily:'inherit',
+                    cursor:'pointer'
+                  }}
+                >
+                  {FEEDBACK_STATUS.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </Td>
+
+              <Td>
+                {item.image_url ? (
+                  <a
+                    href={item.image_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color:'#93c5fd', textDecoration:'none', fontSize:12, fontWeight:700 }}
+                  >
+                    🖼 عرض
+                  </a>
+                ) : (
+                  <span style={{ color:'rgba(255,255,255,.2)', fontSize:11 }}>—</span>
+                )}
+              </Td>
+
+              <Td style={{ color:'rgba(255,255,255,.35)', fontSize:11 }}>
+                {fmtDate(item.created_at)}
+              </Td>
+
+              <Td>
+                <div style={{ display:'flex', gap:4 }}>
+                  <Btn onClick={() => setModal(item)} small color="#6b7280">✏</Btn>
+                  <Btn
+                    onClick={() => setConf({
+                      msg:`حذف السجل #${item.id}؟`,
+                      ok:() => deleteComplaint(item)
+                    })}
+                    small
+                    color="#ef4444"
+                  >
+                    🗑
+                  </Btn>
+                </div>
+              </Td>
+            </Tr>
+          ))
+        }/>
+      </Card>
+    </div>
+  )
+}
+
+function ComplaintModal({ data, complaint, onClose, refetch }) {
+  const def = {
+    customer_id:'',
+    customer:'',
+    phone:'',
+    address:'',
+    customer_type:'عميل',
+    type:'شكوى',
+    title:'',
+    details:'',
+    status:'جديد',
+    image_url:'',
+    image_path:'',
+    notes:'',
+  }
+
+  const [f, sF] = useState({
+    ...def,
+    ...(complaint ? {
+      ...complaint,
+      customer: complaint.customer_name || '',
+    } : {})
+  })
+
+  const [err, sE] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(complaint?.image_url || '')
+  const [customerSearch, setCustomerSearch] = useState(
+    complaint ? `${complaint.customer_name || ''}${complaint.phone ? ` — ${complaint.phone}` : ''}` : ''
+  )
+  const [showCustomerResults, setShowCustomerResults] = useState(false)
+
+  const set = k => v => sF(p => ({ ...p, [k]:v }))
+
+  const filteredCustomers = useMemo(() => {
+    const search = customerSearch.trim().toLowerCase()
+    if (!search) return data.customers || []
+
+    return (data.customers || []).filter(c =>
+      String(c.name || '').toLowerCase().includes(search) ||
+      String(c.phone || '').toLowerCase().includes(search)
+    )
+  }, [customerSearch, data.customers])
+
+  const applyCustomer = (id) => {
+    if (!id) {
+      sF(p => ({ ...p, customer_id:'' }))
+      return
+    }
+
+    const c = data.customers.find(x => x.id === parseInt(id))
+    if (!c) return
+
+    setCustomerSearch(`${c.name}${c.phone ? ` — ${c.phone}` : ''}`)
+
+    sF(p => ({
+      ...p,
+      customer_id: c.id,
+      customer: c.name || '',
+      phone: c.phone || '',
+      address: c.address || '',
+      customer_type: c.customer_type || 'عميل',
+    }))
+
+    setShowCustomerResults(false)
+  }
+
+  const onPickFile = (e) => {
+    const selected = e.target.files?.[0]
+    if (!selected) return
+
+    if (!['image/jpeg','image/png'].includes(selected.type)) {
+      sE('الصورة لازم تكون JPG أو PNG فقط')
+      return
+    }
+
+    if (selected.size > 5 * 1024 * 1024) {
+      sE('حجم الصورة لازم يكون أقل من 5MB')
+      return
+    }
+
+    sE('')
+    setFile(selected)
+
+    const localPreview = URL.createObjectURL(selected)
+    setPreview(localPreview)
+  }
+
+  const save = async () => {
+    if (!f.customer?.trim()) { sE('اسم العميل مطلوب'); return }
+    if (!f.type) { sE('اختر نوع السجل'); return }
+    if (!f.title?.trim()) { sE('عنوان الشكوى / الاقتراح مطلوب'); return }
+    if (!f.details?.trim()) { sE('تفاصيل الشكوى / الاقتراح مطلوبة'); return }
+
+    setSaving(true)
+    sE('')
+
+    try {
+      const customerRes = await findOrCreateCustomer({
+        customer: f.customer,
+        phone: f.phone,
+        address: f.address,
+        customer_type: f.customer_type || 'عميل',
+      })
+
+      if (customerRes.error || !customerRes.customerId) {
+        sE(customerRes.error || 'تعذر حفظ العميل')
+        setSaving(false)
+        return
+      }
+
+      let imageUrl = f.image_url || null
+      let imagePath = f.image_path || null
+
+      if (file) {
+        const uploaded = await uploadComplaintImage(file)
+        if (uploaded.error) {
+          sE(uploaded.error)
+          setSaving(false)
+          return
+        }
+        imageUrl = uploaded.publicUrl
+        imagePath = uploaded.path
+      }
+
+      const now = new Date().toISOString()
+
+      const payload = {
+        customer_id: customerRes.customerId,
+        customer_name: f.customer.trim(),
+        phone: f.phone?.trim() || null,
+        address: f.address?.trim() || '',
+        customer_type: f.customer_type || 'عميل',
+        type: f.type,
+        title: f.title.trim(),
+        details: f.details.trim(),
+        status: f.status || 'جديد',
+        image_url: imageUrl,
+        image_path: imagePath,
+        notes: f.notes || '',
+        updated_at: now,
+      }
+
+      let result
+
+      if (complaint) {
+        result = await supabase
+          .from('delivery_feedback')
+          .update(payload)
+          .eq('id', complaint.id)
+      } else {
+        result = await supabase
+          .from('delivery_feedback')
+          .insert([{
+            ...payload,
+            created_at: now,
+          }])
+      }
+
+      if (result.error) {
+        sE(result.error.message)
+        setSaving(false)
+        return
+      }
+
+      if (file && complaint?.image_path && complaint.image_path !== imagePath) {
+        await supabase.storage.from('complaints').remove([complaint.image_path])
+      }
+
+      toast.success(complaint ? 'تم تعديل السجل بنجاح' : 'تم إضافة السجل بنجاح')
+      setSaving(false)
+      onClose()
+      refetch()
+    } catch (e) {
+      sE(e.message || 'حصل خطأ غير متوقع')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      title={complaint ? '✏ تعديل شكوى / اقتراح' : '➕ شكوى / اقتراح جديد'}
+      onClose={onClose}
+      wide
+    >
+      <Err msg={err}/>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+        <Fld label="عميل محفوظ">
+          <div style={{ position:'relative' }}>
+            <input
+              value={customerSearch}
+              onChange={e => {
+                setCustomerSearch(e.target.value)
+                setShowCustomerResults(true)
+                if (!e.target.value.trim()) {
+                  sF(p => ({ ...p, customer_id:'' }))
+                }
+              }}
+              onFocus={() => setShowCustomerResults(true)}
+              onBlur={() => setTimeout(() => setShowCustomerResults(false), 150)}
+              placeholder="ابحث باسم العميل أو رقم التليفون..."
+              style={{
+                width:'100%',
+                padding:'8px 50px 8px 11px',
+                background:'rgba(255,255,255,.06)',
+                border:'1px solid rgba(255,255,255,.1)',
+                borderRadius:9,
+                color:'white',
+                fontSize:13,
+                fontFamily:'inherit',
+                outline:'none',
+                direction:'rtl'
+              }}
+            />
+
+            {customerSearch && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerSearch('')
+                  applyCustomer('')
+                  setShowCustomerResults(false)
+                }}
+                style={{
+                  position:'absolute',
+                  left:8,
+                  top:7,
+                  background:'rgba(239,68,68,.15)',
+                  border:'1px solid rgba(239,68,68,.25)',
+                  borderRadius:7,
+                  color:'#fca5a5',
+                  cursor:'pointer',
+                  fontSize:11,
+                  padding:'3px 7px',
+                  fontFamily:'inherit'
+                }}
+              >
+                مسح
+              </button>
+            )}
+
+            {showCustomerResults && filteredCustomers.length > 0 && (
+              <div
+                style={{
+                  position:'absolute',
+                  top:'calc(100% + 6px)',
+                  right:0,
+                  left:0,
+                  background:'#13151f',
+                  border:'1px solid rgba(59,91,254,.25)',
+                  borderRadius:12,
+                  zIndex:50,
+                  boxShadow:'0 14px 40px rgba(0,0,0,.45)',
+                  maxHeight:260,
+                  overflowY:'auto'
+                }}
+              >
+                {filteredCustomers.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      applyCustomer(String(c.id))
+                      setShowCustomerResults(false)
+                    }}
+                    style={{
+                      width:'100%',
+                      textAlign:'right',
+                      padding:'10px 12px',
+                      background:'transparent',
+                      border:'none',
+                      borderBottom:'1px solid rgba(255,255,255,.05)',
+                      color:'white',
+                      cursor:'pointer',
+                      fontFamily:'inherit'
+                    }}
+                  >
+                    <div style={{ fontSize:13, fontWeight:800 }}>{c.name}</div>
+                    <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:3 }}>
+                      {c.phone || 'بدون رقم'} {c.address ? `• ${c.address}` : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Fld>
+
+        <Fld label="اسم العميل" required>
+          <Inp value={f.customer} onChange={set('customer')} prefix="👤"/>
+        </Fld>
+
+        <Fld label="التليفون">
+          <Inp value={f.phone} onChange={set('phone')} prefix="📱"/>
+        </Fld>
+
+        <Fld label="العنوان">
+          <Inp value={f.address} onChange={set('address')} prefix="📍"/>
+        </Fld>
+
+        <Fld label="نوع العميل">
+          <Sel
+            value={f.customer_type}
+            onChange={set('customer_type')}
+            options={[
+              { v:'عميل', l:'👤 عميل' },
+              { v:'دليفري', l:'🚚 دليفري' }
+            ]}
+          />
+        </Fld>
+
+        <Fld label="النوع" required>
+          <Sel
+            value={f.type}
+            onChange={set('type')}
+            options={[
+              { v:'شكوى', l:'📝 شكوى' },
+              { v:'اقتراح', l:'💡 اقتراح' }
+            ]}
+          />
+        </Fld>
+
+        <Fld label="الحالة">
+          <Sel
+            value={f.status}
+            onChange={set('status')}
+            options={FEEDBACK_STATUS.map(v => ({ v, l:v }))}
+          />
+        </Fld>
+
+        <Fld label="عنوان مختصر" required>
+          <Inp value={f.title} onChange={set('title')} prefix="📌"/>
+        </Fld>
+      </div>
+
+      <Fld label="التفاصيل" required>
+        <textarea
+          value={f.details || ''}
+          onChange={e => set('details')(e.target.value)}
+          placeholder="اكتب تفاصيل الشكوى أو الاقتراح..."
+          style={{
+            width:'100%',
+            minHeight:90,
+            padding:'9px 13px',
+            background:'rgba(255,255,255,.06)',
+            border:'1px solid rgba(255,255,255,.1)',
+            borderRadius:9,
+            color:'white',
+            fontSize:13,
+            fontFamily:'inherit',
+            direction:'rtl',
+            resize:'vertical'
+          }}
+        />
+      </Fld>
+
+      <Fld label="الصورة المرفقة (JPG / PNG)">
+        <input
+          type="file"
+          accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+          onChange={onPickFile}
+          style={{
+            width:'100%',
+            padding:'9px 12px',
+            background:'rgba(255,255,255,.06)',
+            border:'1px solid rgba(255,255,255,.1)',
+            borderRadius:9,
+            color:'white',
+            fontSize:13,
+            fontFamily:'inherit'
+          }}
+        />
+        <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
+          مسموح فقط JPG / JPEG / PNG — الحد الأقصى 5MB
+        </div>
+
+        {preview && (
+          <div style={{ marginTop:10 }}>
+            <img
+              src={preview}
+              alt="preview"
+              style={{
+                width:'100%',
+                maxHeight:220,
+                objectFit:'contain',
+                borderRadius:12,
+                border:'1px solid rgba(255,255,255,.1)',
+                background:'rgba(255,255,255,.03)'
+              }}
+            />
+          </div>
+        )}
+      </Fld>
+
+      <Fld label="ملاحظات داخلية">
+        <textarea
+          value={f.notes || ''}
+          onChange={e => set('notes')(e.target.value)}
+          placeholder="ملاحظات داخلية للإدارة..."
+          style={{
+            width:'100%',
+            minHeight:60,
+            padding:'9px 13px',
+            background:'rgba(255,255,255,.06)',
+            border:'1px solid rgba(255,255,255,.1)',
+            borderRadius:9,
+            color:'white',
+            fontSize:13,
+            fontFamily:'inherit',
+            direction:'rtl',
+            resize:'vertical'
+          }}
+        />
+      </Fld>
+
+      <div style={{ display:'flex', gap:10 }}>
+        <Btn onClick={save} color="#3b5bfe" loading={saving}>
+          💾 {complaint ? 'حفظ التعديلات' : 'إضافة السجل'}
+        </Btn>
+        <Btn onClick={onClose} color="rgba(255,255,255,.1)">إلغاء</Btn>
+      </div>
+    </Modal>
+  )
+}
+
 // ══════════════════════════════════════════════════════
 //  AUTO-REFRESH BAR
 // ══════════════════════════════════════════════════════
@@ -4779,9 +5558,10 @@ export default function DeliverySystem() {
   if (loading) return <ToastProvider><LoadingScreen/></ToastProvider>
 
   const nc      = notifCount(data)
-  const newOrd  = data.orders.filter(o => o.status === 'استُلم الطلب').length
-  const prepCnt = data.orders.filter(o => o.status === 'قيد التحضير').length
-  const ua      = data.orders.filter(o => !o.driver_id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
+const newOrd  = data.orders.filter(o => o.status === 'استُلم الطلب').length
+const prepCnt = data.orders.filter(o => o.status === 'قيد التحضير').length
+const newComplaints = (data.complaints || []).filter(c => c.status === 'جديد').length
+const ua      = data.orders.filter(o => !o.driver_id && !['تم التسليم','فشل التسليم','مرتجع','ملغي'].includes(o.status))
   const allNav  = [...NAV, { id:'users', label:'المستخدمين', icon:'👥', group:'config' }]
   const props   = { data, refetch, user: DEFAULT_USER }
   const pc      = data.settings?.primaryColor || '#1a1d2e'
@@ -4791,6 +5571,7 @@ export default function DeliverySystem() {
      case 'home':      return <Home          {...props} setPage={setPage}/>
 case 'orders':    return <Orders        {...props}/>
 case 'customers': return <Customers     data={data}/>
+case 'complaints': return <ComplaintsPage data={data} refetch={refetch}/>
 case 'analytics': return <Analytics     data={data}/>
       case 'prep':      return <PrepStation   data={data} refetch={refetch}/>
       case 'tracking':  return <DeliveryTracker data={data} refetch={refetch}/>
@@ -4864,7 +5645,12 @@ case 'analytics': return <Analytics     data={data}/>
                 {!sidebarCollapsed && <div style={{ fontSize:9, fontWeight:800, color:'rgba(255,255,255,.2)', padding:'6px 10px 3px', letterSpacing:1.5, textTransform:'uppercase' }}>{g.label}</div>}
                 {g.items.map(it => {
                   const active = page === it.id
-                  const badge  = it.id==='notifs'?nc:it.id==='orders'?newOrd:it.id==='prep'?prepCnt:0
+                  const badge  =
+  it.id==='notifs' ? nc :
+  it.id==='orders' ? newOrd :
+  it.id==='prep' ? prepCnt :
+  it.id==='complaints' ? newComplaints :
+  0
                   return (
                     <button key={it.id} onClick={() => setPage(it.id)} title={it.label}
                       className="sidebar-item"
