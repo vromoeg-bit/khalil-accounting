@@ -193,7 +193,6 @@ const parseProducts = (p) => {
 }
 
 const findOrCreateCustomer = async (form) => {
-  const findOrCreateCustomer = async (form) => {
   const cleanName = String(form.customer || '').trim()
   const cleanPhone = String(form.phone || '').trim()
   const cleanAddress = String(form.address || '').trim()
@@ -1700,12 +1699,16 @@ const balanceAfterPreview = previousBalancePreview + toNum(f.value) - collection
 
 const applyCustomer = (id) => {
   if (!id) {
-    sF(p => ({
-      ...p,
-      customer_id:'',
-    }))
-    return
-  }
+  sF(p => ({
+    ...p,
+    customer_id:'',
+    customer:'',
+    phone:'',
+    address:'',
+    customer_type:'عميل',
+  }))
+  return
+}
 
   const c = data.customers.find(x => x.id === parseInt(id))
   if (!c) return
@@ -2546,7 +2549,6 @@ function VehicleForm({ veh, onClose, refetch }) {
 function Trips({ data, refetch }) {
   const [modal, setModal] = useState(null)
   const [conf, setConf] = useState(null)
-  const [tripFilter, setTripFilter] = useState('all')
 
   const { trips } = data
   const TRIP_SC = { نشطة:'#10b981', مكتملة:'#6366f1', ملغية:'#ef4444', معلقة:'#f59e0b' }
