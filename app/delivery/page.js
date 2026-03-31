@@ -1931,6 +1931,9 @@ setSaving(true); sE('')
     address: f.address?.trim() || '',
     zone: f.zone || null,
     value: toNum(f.value),
+    previous_balance: previousBalancePreview,
+    balance_after: balanceAfterPreview,
+    order_source: f.order_source?.trim() || '',
     driver_id: f.driver_id ? parseInt(f.driver_id) : null,
     delivery_fee: f.no_fee ? 0 : fee,
     products: JSON.stringify(Array.isArray(f.products) ? f.products : []),
@@ -3374,77 +3377,114 @@ function Treasury({ data }) {
     [data.orders, selectedDate]
   )
 
-  const creditCustomerIds = useMemo(() => {
-    const ids = new Set()
-    ;(data.orders || []).forEach(o => {
-      if (o.payment_method === 'أجل' && o.customer_id) ids.add(o.customer_id)
-    })
-    return ids
-  }, [data.orders])
+  const getCreditPart = (o) => {
+    const collected = toNum(o.collection_amount)
+    const orderValue = toNum(o.value)
+    const previousBalance = toNum(o.previous_balance)
+
+    if (collected <= 0) return 0
+
+    // لو الأوردر نفسه أجل، يبقى التحصيل كله يروح لعملاء الأجل
+    if (o.payment_method === 'أجل') {
+      return previousBalance > 0
+        ? Math.min(collected, previousBalance)
+        : collected
+    }
+
+    // لو الدفع كاش/فيزا/محفظة:
+    // بنعتبر إن قيمة الأوردر الحالي تخص الشيفت،
+    // وأي زيادة فوق قيمة الأوردر تعتبر سداد من الرصيد القديم
+    const extraOverOrder = Math.max(collected - orderValue, 0)
+
+    if (previousBalance > 0) {
+      return Math.min(extraOverOrder, previousBalance)
+    }
+
+    return 0
+  }
+
+  const getOpsPart = (o) => Math.max(toNum(o.collection_amount) - getCreditPart(o), 0)
+
+  const getOpsBucket = (o) => {
+    if (['فيزا', 'محفظة'].includes(o.payment_method)) return 'طيار محفظة'
+    if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') return 'طيار صباحي'
+    if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') return 'طيار مسائي'
+    if (o.payment_method === 'كاش' && !o.collection_shift_type) return 'كاش بدون شفت'
+    return '—'
+  }
 
   const creditCustomers = useMemo(
-    () => (data.customers || []).filter(c => creditCustomerIds.has(c.id)),
-    [data.customers, creditCustomerIds]
+    () => (data.customers || []).filter(c => toNum(c.current_balance) > 0),
+    [data.customers]
   )
 
-  const creditCollectedToday = sumValues(
-    dayCollections.filter(o => o.payment_method === 'أجل'),
-    'collection_amount'
-  )
+  const creditCollectedToday = dayCollections.reduce((s, o) => s + getCreditPart(o), 0)
+
+  const morningPilot = dayCollections.reduce((s, o) => {
+    if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') {
+      return s + getOpsPart(o)
+    }
+    return s
+  }, 0)
+
+  const eveningPilot = dayCollections.reduce((s, o) => {
+    if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') {
+      return s + getOpsPart(o)
+    }
+    return s
+  }, 0)
+
+  const walletPilot = dayCollections.reduce((s, o) => {
+    if (['فيزا', 'محفظة'].includes(o.payment_method)) {
+      return s + getOpsPart(o)
+    }
+    return s
+  }, 0)
+
+  const uncategorizedCash = dayCollections.reduce((s, o) => {
+    if (o.payment_method === 'كاش' && !o.collection_shift_type) {
+      return s + getOpsPart(o)
+    }
+    return s
+  }, 0)
 
   const creditRemaining = creditCustomers.reduce(
     (s, c) => s + Math.max(toNum(c.current_balance), 0),
     0
   )
 
-  const morningPilot = sumValues(
-    dayCollections.filter(o =>
-      o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي'
-    ),
-    'collection_amount'
-  )
-
-  const eveningPilot = sumValues(
-    dayCollections.filter(o =>
-      o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي'
-    ),
-    'collection_amount'
-  )
-
-  const walletPilot = sumValues(
-    dayCollections.filter(o => ['فيزا', 'محفظة'].includes(o.payment_method)),
-    'collection_amount'
-  )
-
-  const uncategorizedCash = sumValues(
-    dayCollections.filter(o =>
-      o.payment_method === 'كاش' && !o.collection_shift_type
-    ),
-    'collection_amount'
-  )
-
   const totalTreasury = creditCollectedToday + morningPilot + eveningPilot + walletPilot
   const totalCollectedToday = sumValues(dayCollections, 'collection_amount')
 
   const treasuryRows = dayCollections.map(o => {
+    const creditPart = getCreditPart(o)
+    const opsPart = getOpsPart(o)
+    const opsBucket = getOpsBucket(o)
+
     let bucket = 'عملاء أجل'
     let bucketColor = '#f59e0b'
 
-    if (['فيزا', 'محفظة'].includes(o.payment_method)) {
-      bucket = 'طيار محفظة'
+    if (creditPart > 0 && opsPart > 0) {
+      bucket = `أجل + ${opsBucket}`
       bucketColor = '#a855f7'
-    } else if (o.payment_method === 'كاش' && o.collection_shift_type === 'صباحي') {
+    } else if (creditPart > 0) {
+      bucket = 'عملاء أجل'
+      bucketColor = '#f59e0b'
+    } else if (opsBucket === 'طيار صباحي') {
       bucket = 'طيار صباحي'
       bucketColor = '#10b981'
-    } else if (o.payment_method === 'كاش' && o.collection_shift_type === 'مسائي') {
+    } else if (opsBucket === 'طيار مسائي') {
       bucket = 'طيار مسائي'
       bucketColor = '#3b5bfe'
-    } else if (o.payment_method === 'كاش' && !o.collection_shift_type) {
+    } else if (opsBucket === 'طيار محفظة') {
+      bucket = 'طيار محفظة'
+      bucketColor = '#a855f7'
+    } else {
       bucket = 'كاش بدون شفت'
       bucketColor = '#ef4444'
     }
 
-    return { ...o, bucket, bucketColor }
+    return { ...o, creditPart, opsPart, bucket, bucketColor }
   })
 
   return (
@@ -3465,6 +3505,10 @@ function Treasury({ data }) {
           </Fld>
         </div>
 
+        <div style={{ background:'rgba(59,91,254,.08)', border:'1px solid rgba(59,91,254,.2)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#93c5fd', fontWeight:700 }}>
+          دلوقتي الخزنة بتفصل تلقائيًا بين سداد الدين القديم وبين تحصيل الأوردر الحالي.
+        </div>
+
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
           <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.2)', borderRadius:12, padding:'14px 16px' }}>
             <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginBottom:6 }}>عملاء الأجل — المحصل</div>
@@ -3482,7 +3526,7 @@ function Treasury({ data }) {
               {fmt(morningPilot)} ج
             </div>
             <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              كاش شفت صباحي فقط
+              بعد خصم جزء الأجل تلقائيًا
             </div>
           </div>
 
@@ -3492,7 +3536,7 @@ function Treasury({ data }) {
               {fmt(eveningPilot)} ج
             </div>
             <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              كاش شفت مسائي فقط
+              بعد خصم جزء الأجل تلقائيًا
             </div>
           </div>
 
@@ -3502,25 +3546,27 @@ function Treasury({ data }) {
               {fmt(walletPilot)} ج
             </div>
             <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6 }}>
-              فيزا + محفظة
+              فيزا + محفظة بعد خصم جزء الأجل
             </div>
           </div>
         </div>
 
         {uncategorizedCash > 0 && (
           <div style={{ marginTop:14, background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:12, padding:'12px 16px', color:'#fca5a5', fontSize:13, fontWeight:700 }}>
-            ⚠️ يوجد مبلغ كاش بدون شفت = {fmt(uncategorizedCash)} ج
+            ⚠️ يوجد جزء تحصيل تشغيلي بدون شفت = {fmt(uncategorizedCash)} ج
           </div>
         )}
       </Card>
 
       <Card>
         <SectionTitle>📋 تفاصيل التحصيل لليوم</SectionTitle>
-        <Tbl cols={['#','العميل','طريقة الدفع','مبلغ التحصيل','شفت التحصيل','تصنيف الخزنة','الرصيد بعد الحركة']} rows={
+        <Tbl cols={['#','العميل','طريقة الدفع','إجمالي التحصيل','جزء الأجل','جزء الطيار','شفت التحصيل','تصنيف الخزنة','الرصيد بعد الحركة']} rows={
           treasuryRows.map(o => (
             <Tr key={o.id}>
               <Td style={{ fontWeight:800, color:'#7b9fff', fontFamily:"'JetBrains Mono',monospace" }}>#{o.id}</Td>
+
               <Td style={{ fontWeight:700, color:'white' }}>{o.customer}</Td>
+
               <Td>
                 <span style={{
                   fontSize:11,
@@ -3533,10 +3579,21 @@ function Treasury({ data }) {
                   {PAY_ICONS[o.payment_method]} {o.payment_method}
                 </span>
               </Td>
+
               <Td style={{ fontWeight:800, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>
                 {fmt(o.collection_amount || 0)} ج
               </Td>
+
+              <Td style={{ fontWeight:800, color:'#f59e0b', fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(o.creditPart || 0)} ج
+              </Td>
+
+              <Td style={{ fontWeight:800, color:'#3b82f6', fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmt(o.opsPart || 0)} ج
+              </Td>
+
               <Td style={{ color:'rgba(255,255,255,.55)' }}>{o.collection_shift_type || '—'}</Td>
+
               <Td>
                 <span style={{
                   fontSize:11,
@@ -3549,6 +3606,7 @@ function Treasury({ data }) {
                   {o.bucket}
                 </span>
               </Td>
+
               <Td style={{ fontWeight:800, color:'#fcd34d', fontFamily:"'JetBrains Mono',monospace" }}>
                 {fmt(o.balance_after || 0)} ج
               </Td>
