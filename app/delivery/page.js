@@ -1699,19 +1699,22 @@ const balanceAfterPreview = previousBalancePreview + toNum(f.value) - collection
 
 const applyCustomer = (id) => {
   if (!id) {
-  sF(p => ({
-    ...p,
-    customer_id:'',
-    customer:'',
-    phone:'',
-    address:'',
-    customer_type:'عميل',
-  }))
-  return
-}
+    setCustomerSearch('')
+    sF(p => ({
+      ...p,
+      customer_id:'',
+      customer:'',
+      phone:'',
+      address:'',
+      customer_type:'عميل',
+    }))
+    return
+  }
 
   const c = data.customers.find(x => x.id === parseInt(id))
   if (!c) return
+
+  setCustomerSearch(`${c.name}${c.phone ? ` — ${c.phone}` : ''}`)
 
   sF(p => ({
     ...p,
@@ -1810,18 +1813,110 @@ setSaving(true); sE('')
       <Err msg={err}/>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
   <Fld label="عميل محفوظ">
-    <Sel
-      value={f.customer_id || ''}
-      onChange={applyCustomer}
-      options={[
-        { v:'', l:'عميل جديد / اكتب يدوي' },
-        ...data.customers.map(c => ({
-          v: c.id,
-          l: `${c.name}${c.phone ? ` — ${c.phone}` : ''}`,
-        }))
-      ]}
+  <div style={{ position:'relative' }}>
+    <input
+      value={customerSearch}
+      onChange={e => {
+        setCustomerSearch(e.target.value)
+        setShowCustomerResults(true)
+
+        if (!e.target.value.trim()) {
+          sF(p => ({
+            ...p,
+            customer_id:'',
+          }))
+        }
+      }}
+      onFocus={() => setShowCustomerResults(true)}
+      onBlur={() => setTimeout(() => setShowCustomerResults(false), 150)}
+      placeholder="ابحث باسم العميل أو رقم التليفون..."
+      style={{
+        width:'100%',
+        padding:'8px 50px 8px 11px',
+        background:'rgba(255,255,255,.06)',
+        border:'1px solid rgba(255,255,255,.1)',
+        borderRadius:9,
+        color:'white',
+        fontSize:13,
+        fontFamily:'inherit',
+        outline:'none',
+        direction:'rtl'
+      }}
     />
-  </Fld>
+
+    {customerSearch && (
+      <button
+        type="button"
+        onClick={() => {
+          setCustomerSearch('')
+          applyCustomer('')
+          setShowCustomerResults(false)
+        }}
+        style={{
+          position:'absolute',
+          left:8,
+          top:7,
+          background:'rgba(239,68,68,.15)',
+          border:'1px solid rgba(239,68,68,.25)',
+          borderRadius:7,
+          color:'#fca5a5',
+          cursor:'pointer',
+          fontSize:11,
+          padding:'3px 7px',
+          fontFamily:'inherit'
+        }}
+      >
+        مسح
+      </button>
+    )}
+
+    {showCustomerResults && filteredCustomers.length > 0 && (
+      <div
+        style={{
+          position:'absolute',
+          top:'calc(100% + 6px)',
+          right:0,
+          left:0,
+          background:'#13151f',
+          border:'1px solid rgba(59,91,254,.25)',
+          borderRadius:12,
+          zIndex:50,
+          boxShadow:'0 14px 40px rgba(0,0,0,.45)',
+          maxHeight:260,
+          overflowY:'auto'
+        }}
+      >
+        {filteredCustomers.map(c => (
+          <button
+            key={c.id}
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              applyCustomer(String(c.id))
+              setShowCustomerResults(false)
+            }}
+            style={{
+              width:'100%',
+              textAlign:'right',
+              padding:'10px 12px',
+              background:'transparent',
+              border:'none',
+              borderBottom:'1px solid rgba(255,255,255,.05)',
+              color:'white',
+              cursor:'pointer',
+              fontFamily:'inherit'
+            }}
+          >
+            <div style={{ fontSize:13, fontWeight:800 }}>{c.name}</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:3 }}>
+              {c.phone || 'بدون رقم'} {c.address ? `• ${c.address}` : ''}
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+</Fld>
 
   <Fld label="اسم العميل" required><Inp value={f.customer} onChange={set('customer')} prefix="👤"/></Fld>
   <Fld label="التليفون"><Inp value={f.phone} onChange={set('phone')} prefix="📱"/></Fld>
@@ -2417,8 +2512,37 @@ function Zones({ data, refetch }) {
 function ZoneModal({ zone, onClose, refetch }) {
   const p0 = zone?.pricing || {}
   const [f, sF] = useState({ name:'', load:'عادي', max_capacity:40, avg_time:25, color:'#3b5bfe', basePrice:10, discount:0, freeDeliveryFrom:150, minOrder:30, slaMinutes:40, ...zone, ...p0 })
-  const [err, sE] = useState(''); const [saving, setSaving] = useState(false)
-  const set = k => v => sF(p => ({ ...p, [k]:v }))
+  const [err, sE] = useState('')
+const [saving, setSaving] = useState(false)
+const [customerSearch, setCustomerSearch] = useState(() => {
+  const c = data.customers.find(x => x.id === parseInt(order?.customer_id))
+  if (c) return `${c.name}${c.phone ? ` — ${c.phone}` : ''}`
+  return ''
+})
+const [showCustomerResults, setShowCustomerResults] = useState(false)
+
+const filteredCustomers = useMemo(() => {
+  const q = customerSearch.trim()
+
+  if (!q) return (data.customers || []).slice(0, 12)
+
+  return (data.customers || [])
+    .map(c => ({
+      c,
+      score: weightedSearchScore(q, [
+        { value: c.name, weight: 8 },
+        { value: c.phone, weight: 6 },
+        { value: c.address, weight: 4 },
+        { value: c.customer_type, weight: 3 },
+      ])
+    }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)
+    .map(x => x.c)
+}, [customerSearch, data.customers])
+
+const set = k => v => sF(p => ({ ...p, [k]:v }))
   const COLS = ['#ef4444','#f59e0b','#10b981','#3b5bfe','#a855f7','#06b6d4','#f97316','#6366f1','#ec4899','#14b8a6']
   const save = async () => {
     if (!f.name?.trim()) { sE('يجب ملء اسم المنطقة'); return }
